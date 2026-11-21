@@ -1,135 +1,120 @@
 # Roadmap
 
 11-768 final project. Deadline: 2026-12-03.
+New to the terms (IRT, Kendall tau, noise ceiling, ...)? Read [BACKGROUND.md](BACKGROUND.md) first.
 
 ## 1. Question
 
-Running an agent on a full benchmark is expensive. Prior work (tinyBenchmarks, Agent Psychometrics,
-PTA-IRT) shows that a small subset of tasks (e.g. ~40 of 500) ranks agents almost like the full set.
+Running an agent on a full benchmark is expensive. Prior work shows that a small subset of tasks
+(e.g. ~40 of 500) ranks agents almost like the full benchmark. But it selects the subset and tests it
+on the **same population of agents** (random split).
 
-But they choose the subset and test it on the **same population of agents** (random split).
-In practice, a subset is chosen once from the results of **existing** agents and then used on
-agents that are **newer** and **stronger**.
+In practice a subset is selected once, from the results of **existing** agents, and then used on agents
+that come **later** and are **stronger**.
 
-**Does a subset chosen from older / weaker agents' results still rank newer / stronger agents
-correctly, and for how long?**
+> Does a subset selected from older agents' results still rank newer agents correctly, and for how long?
+> And when does the full benchmark itself stop telling the best agents apart?
 
-## 2. Benchmarks
+## 2. Core claims (must do)
 
-Both have public per-agent, per-task pass/fail results, so the core study costs $0.
-
-| Benchmark | Agents x tasks | Dates | Source | Note |
-|---|---|---|---|---|
-| SWE-bench Verified | 182 x 500 | yes (folder name) | [SWE-bench/experiments](https://github.com/SWE-bench/experiments), `evaluation/verified/*/results/results.json` | near saturated |
-| Terminal-Bench 2.0 | ~75 x 89, 5 trials per task | to check (trial timestamps in `result.json`) | [harborframework/terminal-bench-2-leaderboard](https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard) (full repo 40 GB; `result.json` only ~350 MB) | not saturated; 5 trials give run-to-run noise |
-
-Artificial Analysis Intelligence Index: external reference only (free API gives the headline index,
-release date and cost; no per-task results). Requires attribution.
-
-## 3. Data format (shared by both benchmarks)
-
-```
-            task_1 task_2 ... task_N
-agent_A       1      0          1      date 2024-08, full score 0.33
-agent_B       1      1          0      date 2025-03, full score 0.62
-```
-
-- `outcomes`: agents x tasks, 0/1 (Terminal-Bench: mean over the 5 trials, plus the raw trials)
-- `dates`: one submission date per agent
-- `full_score`: mean over all tasks (agent strength)
-
-## 4. Core loop
-
-1. **Split** agents into a *selection group* and a *test group*.
-2. **Select** k tasks using only the selection group's results.
-3. **Rank** the test group by their score on the k tasks.
-4. **Score**: compare with the full-benchmark ranking of the test group.
-
-Repeat over:
-
-| Axis | Values |
-|---|---|
-| Split | random (prior work) / by date / weak-to-strong |
-| Selection method | random, stratified by difficulty, 30-70 % pass-rate filter (Ndzomga), IRT (tinyBenchmarks) |
-| Subset size k | SWE-bench 25 / 50 / 100 / 200; Terminal-Bench 10 / 20 / 40 |
-
-Splits:
-- **Random**: random half of agents selects, the other half is tested (repeat with many seeds).
-- **By date**: agents before the cutoff select, agents after it are tested. SWE-bench cutoff 2025-06-30
-  (~125 / ~57); also 2024-12, 2025-03, 2025-09. Terminal-Bench cutoff after dates are confirmed.
-- **Weak-to-strong**: the weakest ~2/3 by full score select, the strongest ~1/3 are tested.
-
-## 5. Metrics
-
-- **Kendall tau** between the subset ranking and the full ranking of the test group (1 = identical).
-- **Top-k agreement**: are the top 5 agents the same?
-- **Score error** (MAE) where a method predicts the full score (IRT).
-- **Noise ceiling**: resample the full task set with replacement (bootstrap) and re-rank the test group;
-  the spread of tau shows how much the full benchmark itself wobbles. A subset is good enough when its
-  tau falls inside this range.
-- **Floor**: a random subset of the same size.
-
-## 6. Experiments
-
-| ID | Experiment | Question |
+| ID | Claim | How we test it |
 |---|---|---|
-| E1 | Random split, all methods and sizes | Do we reproduce "small subsets are enough"? (sanity check of our code) |
-| E2 | Date split | How much does tau drop on newer agents? **(main result)** |
-| E3 | Weak-to-strong split | Does a subset chosen from weak agents rank strong agents? |
-| E4 | Date split, tau per month after the cutoff | How long does a frozen subset last? (decay curve) |
-| E5 | Terminal-Bench only, use the 5 trials | How much does the ranking move when the same agents are rerun? Add to the noise ceiling |
-| E6 (optional) | Adaptive testing + staleness alarm | Only if time allows |
+| **C1** | Random splits **overstate** how well small subsets work | Same methods and sizes, random split vs date split: compare Kendall tau |
+| **C2** | A frozen subset expires after about N months, so it should be re-selected every N months | Decay curve: tau per month after the cutoff, against the noise ceiling |
+| **C3** | The full SWE-bench Verified stops separating the top agents after some date | Per month: score gaps among the top 10 agents vs bootstrap noise |
 
-E1-E3 are one loop with different settings: 2 benchmarks x 3 splits x 4 methods x 4 sizes.
+Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how fast (C2) -> the full
+benchmark expires too (C3).
 
-## 7. Deliverables
+## 3. Extensions (in priority order)
 
-1. Table: benchmark x split, cells = Kendall tau (with noise ceiling).
-2. Decay curve: tau vs. months after the cutoff, with the noise-ceiling band.
-3. tau vs. subset size, per method.
-4. Final report.
+| ID | Idea |
+|---|---|
+| X1 | **Frontier-aware selection** (our own method): keep tasks slightly harder than the current best agent. Does the subset last longer? |
+| X2 | Task life cycle: when does each task go from "unsolved" to "separates agents" to "solved by everyone"? (mostly a by-product of C3) |
+| X3 | Model vs scaffold: redo C2 on mini-SWE-agent only (one scaffold, many models) |
+| X4 | Run-to-run noise: use Terminal-Bench's 5 trials per task; add to the noise ceiling |
+| X5 | Weak-to-strong split: select with the weakest 2/3 of agents, test on the strongest 1/3 |
+| X6 | Adaptive testing + staleness alarm |
 
-## 8. Code layout (planned)
+## 4. Data
+
+| | SWE-bench Verified | Terminal-Bench 2.0 |
+|---|---|---|
+| Source | [SWE-bench/experiments](https://github.com/SWE-bench/experiments) `evaluation/verified/<date>_<name>/` | [harborframework/terminal-bench-2-leaderboard](https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard) `submissions/terminal-bench/2.0/<agent>__<model>/` |
+| Agents x tasks | 175 usable of 182 x 500 | 76 x ~89, 5 trials per task |
+| Per-task 0/1 | `results/results.json` (135) or `per_instance_details.json` (40, also per-task cost); 7 have neither | `<job>/<trial>/result.json` -> `verifier_result.rewards.reward` |
+| Agent date | folder name (2023-10 to 2026-09, ~3 years) | job folder name, else `started_at` (2025-11 to 2026-05, ~6 months) |
+| Scaffold / model | `metadata.yaml`: `agent`, `model`, `model_org`, `os_model` | `metadata.yaml`: `agent_display_name`, `models[]` |
+| Model release date | only 48 of 182 (`model_release_date`); fill the rest | not given |
+| Cost / tokens | 40 mini-SWE-agent runs | every trial (`cost_usd`, tokens) |
+
+- The time axis (C2, C3) mainly uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves
+  C1, X4 and X5.
+- Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required)
+  or by hand.
+- Raw data is not committed (`data/raw/` is in `.gitignore`).
+
+### Unified format (both benchmarks)
+
+Three tables, long format:
+
+| Table | Columns |
+|---|---|
+| `agents` | `agent_id`, `benchmark`, `scaffold`, `model`, `model_org`, `open_weight`, `submit_date`, `model_release_date` |
+| `tasks` | `task_id`, `benchmark`, `category` (repo for SWE-bench) |
+| `runs` | `agent_id`, `task_id`, `trial`, `resolved` (0/1), `cost`, `tokens` |
+
+The agents x tasks 0/1 matrix is derived from `runs` (mean over trials).
+
+## 5. Core loop
+
+1. **Split** agents into a selection group and a test group (random / by date / weak-to-strong).
+2. **Select** k tasks from the selection group's results (random, stratified, 30-70 % filter, IRT).
+3. **Rank** the test group on those k tasks.
+4. **Score**: Kendall tau vs. the test group's full-benchmark ranking; compare with the noise ceiling.
+
+Subset sizes: SWE-bench 25 / 50 / 100 / 200; Terminal-Bench 10 / 20 / 40.
+Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
+
+## 6. Code layout (planned)
 
 | Part | Input -> output |
 |---|---|
-| `data/` loaders | benchmark name -> outcomes, dates, full_score |
-| `split` | data + split kind -> selection group, test group |
+| `data/` loaders | raw files -> `agents`, `tasks`, `runs` tables |
+| `split` | tables + split kind -> selection group, test group |
 | `select` | selection group + method + k -> k task ids |
-| `evaluate` | k tasks + test group -> tau, top-k agreement, MAE |
+| `evaluate` | k tasks + test group -> tau, top-5 agreement, score error |
 | `ceiling` | test group -> bootstrap tau range |
-| `experiments/` | runs the grid, writes `results/*.csv`, draws `figures/` |
+| `experiments/` | runs the grid -> `results/*.csv`, `figures/` |
 
-Raw data is not committed (`data/raw/` is in `.gitignore`); each loader downloads it.
-
-## 9. Roles
+## 7. Roles
 
 | Person | Owns |
 |---|---|
 | Haoling | Framework (split / select / evaluate / ceiling), experiment grid, figures, report structure |
-| [Name B] | SWE-bench Verified: loader, dates, run the grid, E4 decay curve |
-| [Name C] | Terminal-Bench 2.0: loader, confirm dates, run the grid, E5 run-to-run noise |
+| Wilson | SWE-bench Verified: loader into the unified format, fill model release dates, C2 decay curve, C3 |
+| Wendy | Terminal-Bench 2.0: loader into the unified format, confirm dates, C1 on Terminal-Bench, X4 |
 
-## 10. Timeline
+## 8. Timeline
 
 | Dates | Work |
 |---|---|
-| 11/21-11/23 | Agree on the data format and function interfaces. B and C build their loaders. C checks Terminal-Bench dates. |
-| 11/24-11/27 | E1-E3 on both benchmarks (11/26 Thanksgiving) |
-| 11/28-11/30 | E4 decay curve, E5 noise, cross-benchmark comparison; E6 if time allows |
+| 11/21-11/23 | Agree on the unified format and function interfaces. Wilson and Wendy build loaders. |
+| 11/24-11/27 | C1 on both benchmarks (11/26 Thanksgiving) |
+| 11/28-11/30 | C2 decay curves, C3; X1 if time allows |
 | 12/01-12/03 | Figures and report |
 
-## 11. Open checks
+## 9. Deliverables
 
-- [ ] Terminal-Bench: can we get one date per submission from `result.json` timestamps?
-- [ ] Terminal-Bench: 89 vs 90 tasks; which submissions to drop (missing trials, 2.1 jobs)
-- [ ] SWE-bench: re-check for new submissions before the final run
+1. Table: benchmark x split (random / date), cells = Kendall tau, with the noise ceiling (C1).
+2. Decay curve per selection method, with the noise-ceiling band (C2).
+3. Top-10 score gaps vs noise over time for SWE-bench Verified (C3).
+4. Final report.
+
+## 10. Open checks
+
+- [ ] Terminal-Bench: dates for the ~18 submissions whose job folders are not named by date
+- [ ] Terminal-Bench: 89 vs 90 tasks; drop submissions with missing trials or 2.1 jobs
+- [ ] SWE-bench: what to do with the 7 submissions without per-task results (drop)
 - [ ] What exactly is due on 12/03 (report, presentation, code)?
-
-## Related work
-
-- tinyBenchmarks (arXiv 2402.14992): IRT picks ~100 items per LLM benchmark.
-- Agent Psychometrics (arXiv 2604.00594): IRT + adaptive testing on SWE-bench Verified, random split.
-- Ndzomga (arXiv 2603.23749): keeps tasks with 30-70 % pass rate; date split on Terminal-Bench only.
-- PACE (arXiv 2607.02032, Neubig et al.): cheap non-agentic proxy predicts agentic scores; leave-one-out over 14 models.
-- Observational Scaling Laws (arXiv 2405.10938): predicts strong models from weaker public models.
