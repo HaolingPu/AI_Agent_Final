@@ -1,0 +1,44 @@
+[project]
+name = "subset-eval"
+version = "0.1.0"
+description = "Do small benchmark subsets still rank newer coding agents correctly?"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scipy>=1.12",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=3.7",
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["subset_eval", "subset_eval.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["subset_eval"]
+
+[tool.ruff.lint]
+ignore = ["E501"]
+select = [
+    "ANN401",   # No Any
+    "B006",     # Mutable argument defaults
+    "B009",     # Constant-name getattr
+    "B010",     # Constant-name setattr
+    "E722",     # No bare except
+    "F",        # Pyflakes
+    "N801",     # Class names
+    "N816",     # Module-scope variable names
+    "RUF008",   # Mutable dataclass defaults
+]

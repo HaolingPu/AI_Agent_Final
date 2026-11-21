@@ -1,16 +1,12 @@
 # Roadmap
 
-11-768 final project. Deadline: 2026-12-03.
-New to the terms (IRT, Kendall tau, noise ceiling, ...)? Read [BACKGROUND.md](BACKGROUND.md) first.
+11-768 final project. Deadline: 2026-12-03. New to the terms (IRT, Kendall tau, noise ceiling, ...)? Read [BACKGROUND.md](BACKGROUND.md) first.
 
 ## 1. Question
 
-Running an agent on a full benchmark is expensive. Prior work shows that a small subset of tasks
-(e.g. ~40 of 500) ranks agents almost like the full benchmark. But it selects the subset and tests it
-on the **same population of agents** (random split).
+Running an agent on a full benchmark is expensive. Prior work shows that a small subset of tasks (e.g. ~40 of 500) ranks agents almost like the full benchmark. But it selects the subset and tests it on the **same population of agents** (random split).
 
-In practice a subset is selected once, from the results of **existing** agents, and then used on agents
-that come **later** and are **stronger**.
+In practice a subset is selected once, from the results of **existing** agents, and then used on agents that come **later** and are **stronger**.
 
 > Does a subset selected from older agents' results still rank newer agents correctly, and for how long?
 > And when does the full benchmark itself stop telling the best agents apart?
@@ -23,8 +19,7 @@ that come **later** and are **stronger**.
 | **C2** | A frozen subset expires after about N months, so it should be re-selected every N months | Decay curve: tau per month after the cutoff, against the noise ceiling |
 | **C3** | A saturated benchmark (SWE-bench Verified) stops separating the top agents after some date; an unsaturated one (Terminal-Bench) does not yet | Per month: score gaps among the top 10 agents vs bootstrap noise, on both benchmarks |
 
-Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how fast (C2) -> the full
-benchmark expires too (C3).
+Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how fast (C2) -> the full benchmark expires too (C3).
 
 ## 3. Extensions (in priority order)
 
@@ -49,10 +44,8 @@ benchmark expires too (C3).
 | Model release date | only 48 of 182 (`model_release_date`); fill the rest | not given |
 | Cost / tokens | 40 mini-SWE-agent runs | every trial (`cost_usd`, tokens) |
 
-- The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3
-  (as the unsaturated contrast), X4 and X5.
-- Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required)
-  or by hand.
+- The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3 (as the unsaturated contrast), X4 and X5.
+- Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required) or by hand.
 - Raw data is not committed (`data/raw/` is in `.gitignore`).
 
 ### Unified format (both benchmarks)
@@ -61,11 +54,11 @@ Three tables, long format:
 
 | Table | Columns |
 |---|---|
-| `agents` | `agent_id`, `benchmark`, `scaffold`, `model`, `model_org`, `open_weight`, `submit_date`, `model_release_date` |
-| `tasks` | `task_id`, `benchmark`, `category` (repo for SWE-bench) |
-| `runs` | `agent_id`, `task_id`, `trial`, `resolved` (0/1), `cost`, `tokens` |
+| `agents` | `agent_id`, `scaffold`, `model`, `model_org`, `open_weight`, `submit_date` (datetime, required), `model_release_date` |
+| `tasks` | `task_id`, `category` (repo for SWE-bench) |
+| `runs` | `agent_id`, `task_id`, `trial`, `resolved` (0/1), `cost_usd`, `total_tokens` (NaN when unknown) |
 
-The agents x tasks 0/1 matrix is derived from `runs` (mean over trials).
+A loader returns `BenchmarkData(name=..., agents=..., tasks=..., runs=...)` from [subset_eval/data.py](subset_eval/data.py), which checks these columns. Every (agent, task, trial) is one row, unresolved tasks included as `resolved = 0`. The agents x tasks matrix is `outcome_matrix()`: the mean over trials.
 
 ## 5. Core loop
 
@@ -74,14 +67,18 @@ The agents x tasks 0/1 matrix is derived from `runs` (mean over trials).
 3. **Rank** the test group on those k tasks.
 4. **Score**: Kendall tau vs. the test group's full-benchmark ranking; compare with the noise ceiling.
 
+**Compare within a split.** Newer agents are closer to each other, so every subset (and the full benchmark) ranks them less reliably; on toy data even random selection drops in the date split, and so does the noise ceiling. A method's result is therefore read relative to random selection and to the noise ceiling **on the same split**, never as a raw tau across splits.
+
 Subset sizes: SWE-bench 25 / 50 / 100 / 200; Terminal-Bench 10 / 20 / 40.
+
 Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
 
-## 6. Code layout (planned)
+## 6. Code layout
 
 | Part | Input -> output |
 |---|---|
-| `data/` loaders | raw files -> `agents`, `tasks`, `runs` tables |
+| `subset_eval/data.py` | `BenchmarkData` (the three tables, validated) -> `outcome_matrix` |
+| `subset_eval/loaders/` | raw files -> `BenchmarkData` (Wilson, Wendy) |
 | `split` | tables + split kind -> selection group, test group |
 | `select` | selection group + method + k -> k task ids |
 | `evaluate` | k tasks + test group -> tau, top-5 agreement, score error |
