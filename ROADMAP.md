@@ -21,7 +21,7 @@ that come **later** and are **stronger**.
 |---|---|---|
 | **C1** | Random splits **overstate** how well small subsets work | Same methods and sizes, random split vs date split: compare Kendall tau |
 | **C2** | A frozen subset expires after about N months, so it should be re-selected every N months | Decay curve: tau per month after the cutoff, against the noise ceiling |
-| **C3** | The full SWE-bench Verified stops separating the top agents after some date | Per month: score gaps among the top 10 agents vs bootstrap noise |
+| **C3** | A saturated benchmark (SWE-bench Verified) stops separating the top agents after some date; an unsaturated one (Terminal-Bench) does not yet | Per month: score gaps among the top 10 agents vs bootstrap noise, on both benchmarks |
 
 Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how fast (C2) -> the full
 benchmark expires too (C3).
@@ -49,8 +49,8 @@ benchmark expires too (C3).
 | Model release date | only 48 of 182 (`model_release_date`); fill the rest | not given |
 | Cost / tokens | 40 mini-SWE-agent runs | every trial (`cost_usd`, tokens) |
 
-- The time axis (C2, C3) mainly uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves
-  C1, X4 and X5.
+- The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3
+  (as the unsaturated contrast), X4 and X5.
 - Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required)
   or by hand.
 - Raw data is not committed (`data/raw/` is in `.gitignore`).
@@ -90,26 +90,28 @@ Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
 
 ## 7. Roles
 
-| Person | Owns |
-|---|---|
-| Haoling | Framework (split / select / evaluate / ceiling), experiment grid, figures, report structure |
-| Wilson | SWE-bench Verified: loader into the unified format, fill model release dates, C2 decay curve, C3 |
-| Wendy | Terminal-Bench 2.0: loader into the unified format, confirm dates, C1 on Terminal-Bench, X4 |
+Everyone owns data or framework **and** one core claim end to end (experiments, figure, report section).
+
+| Person | Data / code | Core claim | Extensions |
+|---|---|---|---|
+| Haoling | Shared framework (split / select / evaluate / ceiling), figure style, report structure | **C1** on both benchmarks | X1 |
+| Wilson | SWE-bench Verified loader, fill model release dates | **C2** decay curves | X3 |
+| Wendy | Terminal-Bench 2.0 loader, confirm dates | **C3** on both benchmarks | X4, X5 |
 
 ## 8. Timeline
 
 | Dates | Work |
 |---|---|
 | 11/21-11/23 | Agree on the unified format and function interfaces. Wilson and Wendy build loaders. |
-| 11/24-11/27 | C1 on both benchmarks (11/26 Thanksgiving) |
-| 11/28-11/30 | C2 decay curves, C3; X1 if time allows |
+| 11/24-11/27 | Each person runs their core claim (C1 / C2 / C3) with the shared framework (11/26 Thanksgiving) |
+| 11/28-11/30 | Finish core claims; extensions if time allows |
 | 12/01-12/03 | Figures and report |
 
 ## 9. Deliverables
 
 1. Table: benchmark x split (random / date), cells = Kendall tau, with the noise ceiling (C1).
 2. Decay curve per selection method, with the noise-ceiling band (C2).
-3. Top-10 score gaps vs noise over time for SWE-bench Verified (C3).
+3. Top-10 score gaps vs noise over time, SWE-bench Verified vs Terminal-Bench (C3).
 4. Final report.
 
 ## 10. Open checks
