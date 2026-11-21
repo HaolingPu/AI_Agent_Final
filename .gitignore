@@ -1,0 +1,13 @@
+# raw benchmark data (downloaded by the loaders)
+data/raw/
+
+# secrets
+.env
+.secret
+*.pem
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
