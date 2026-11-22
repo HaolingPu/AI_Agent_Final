@@ -6,6 +6,7 @@ import pytest
 
 from subset_eval.data import BenchmarkData, outcome_matrix
 from subset_eval.metrics import noise_ceiling, score_subset
+from subset_eval.select import select_pass_rate_band
 from subset_eval.split import split_by_date
 from subset_eval.toy import make_toy_benchmark
 
@@ -117,3 +118,47 @@ def test_noise_ceiling_is_one_when_all_tasks_agree() -> None:
         outcomes, num_bootstrap=50, random_generator=np.random.default_rng(0)
     )
     assert (ceiling.kendall_tau_low, ceiling.kendall_tau_high) == pytest.approx((1, 1))
+
+
+def test_pass_rate_band_takes_in_band_tasks_first_then_the_nearest() -> None:
+    """Pass rates over 10 selection agents: in band 0.4 and 0.6; outside 0.2, 0.0 and 1.0."""
+    pass_rate_by_task = {
+        "band_a": 0.4,
+        "band_b": 0.6,
+        "near": 0.2,
+        "never": 0.0,
+        "always": 1.0,
+    }
+    selection_outcomes = pd.DataFrame(
+        {
+            task_id: [1] * round(10 * rate) + [0] * (10 - round(10 * rate))
+            for task_id, rate in pass_rate_by_task.items()
+        }
+    )
+    random_generator = np.random.default_rng(0)
+    two_tasks = select_pass_rate_band(
+        selection_outcomes, subset_size=2, random_generator=random_generator
+    )
+    three_tasks = select_pass_rate_band(
+        selection_outcomes, subset_size=3, random_generator=random_generator
+    )
+    assert set(two_tasks) == {"band_a", "band_b"}
+    assert set(three_tasks) == {"band_a", "band_b", "near"}
+
+
+def test_pass_rate_band_samples_the_whole_band_when_it_exceeds_k() -> None:
+    """Truncating the band by column order once picked the same in-band tasks every time."""
+    selection_outcomes = pd.DataFrame(
+        {f"band_{i}": [1] * 5 + [0] * 5 for i in range(6)}
+        | {"never": [0] * 10, "always": [1] * 10}
+    )
+    picked_task_ids = set()
+    for seed in range(20):
+        picked_task_ids |= set(
+            select_pass_rate_band(
+                selection_outcomes,
+                subset_size=2,
+                random_generator=np.random.default_rng(seed),
+            )
+        )
+    assert picked_task_ids == {f"band_{i}" for i in range(6)}
