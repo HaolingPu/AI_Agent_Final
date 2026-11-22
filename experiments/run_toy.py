@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,7 @@ from subset_eval.select import (
     SelectionMethod,
     select_pass_rate_band,
     select_random,
+    select_stratified,
 )
 from subset_eval.split import AgentSplit, SplitKind, split_by_date, split_random
 from subset_eval.toy import make_toy_benchmark
@@ -21,7 +23,11 @@ from subset_eval.toy import make_toy_benchmark
 logger = logging.getLogger(__name__)
 
 SPLIT_KINDS: tuple[SplitKind, ...] = ("random", "date")
-SELECTION_METHODS: tuple[SelectionMethod, ...] = ("random", "pass_rate_band")
+SELECTION_METHODS: tuple[SelectionMethod, ...] = (
+    "random",
+    "stratified",
+    "pass_rate_band",
+)
 
 
 def main() -> None:
@@ -57,18 +63,22 @@ def main() -> None:
         f"{benchmark.name}: {outcomes.shape[0]} agents x {outcomes.shape[1]} tasks, date cutoff {cutoff_date:%Y-%m}"
     )
 
+    def _purpose_generator(repeat: int, purpose: str) -> np.random.Generator:
+        # note (Haoling Pu): each purpose seeds from its own name, so adding, removing or reordering methods or sizes never changes the other numbers.
+        return np.random.default_rng(
+            [cli_arguments.seed, repeat, zlib.crc32(purpose.encode())]
+        )
+
     rows = []
     for repeat in range(cli_arguments.num_repeats):
-        # note (Haoling Pu): one generator per repeat, and the same random subsets for both splits, so the two splits are a paired comparison.
-        # note (Haoling Pu): one stream per purpose, so adding a method does not shift the splits or the ceilings.
-        split_generator, ceiling_generator, selection_generator = np.random.default_rng(
-            [cli_arguments.seed, repeat]
-        ).spawn(3)
+        # note (Haoling Pu): the same random subsets serve both splits, so the two splits are a paired comparison.
         random_subset_task_ids_by_size = {
             subset_size: select_random(
                 outcomes.columns,
                 subset_size=subset_size,
-                random_generator=selection_generator,
+                random_generator=_purpose_generator(
+                    repeat, f"random_subsets/{subset_size}"
+                ),
             )
             for subset_size in cli_arguments.subset_sizes
         }
@@ -77,7 +87,7 @@ def main() -> None:
                 agent_split: AgentSplit = split_random(
                     benchmark.agents,
                     selection_fraction=cli_arguments.selection_fraction,
-                    random_generator=split_generator,
+                    random_generator=_purpose_generator(repeat, "random_split"),
                 )
             else:
                 agent_split = split_by_date(benchmark.agents, cutoff_date=cutoff_date)
@@ -85,7 +95,7 @@ def main() -> None:
             ceiling = noise_ceiling(
                 test_outcomes,
                 num_bootstrap=cli_arguments.num_bootstrap,
-                random_generator=ceiling_generator,
+                random_generator=_purpose_generator(repeat, f"ceiling/{split_kind}"),
             )
             selection_outcomes = outcomes.loc[agent_split.selection_agent_ids]
             # note (Haoling Pu): when k exceeds this count, the band subset is filled with near-band tasks and is no longer Ndzomga's method.
@@ -94,13 +104,26 @@ def main() -> None:
             )
             for selection_method in SELECTION_METHODS:
                 for subset_size in cli_arguments.subset_sizes:
+                    selection_purpose = (
+                        f"selection/{split_kind}/{selection_method}/{subset_size}"
+                    )
                     if selection_method == "random":
                         subset_task_ids = random_subset_task_ids_by_size[subset_size]
+                    elif selection_method == "stratified":
+                        subset_task_ids = select_stratified(
+                            selection_outcomes,
+                            subset_size=subset_size,
+                            random_generator=_purpose_generator(
+                                repeat, selection_purpose
+                            ),
+                        )
                     elif selection_method == "pass_rate_band":
                         subset_task_ids = select_pass_rate_band(
                             selection_outcomes,
                             subset_size=subset_size,
-                            random_generator=selection_generator,
+                            random_generator=_purpose_generator(
+                                repeat, selection_purpose
+                            ),
                         )
                     else:
                         raise ValueError(f"unknown selection method {selection_method}")
@@ -130,9 +153,14 @@ def main() -> None:
     kendall_tau_by_method = results.pivot_table(
         index=["split", "subset_size"], columns="method", values="kendall_tau"
     )
-    kendall_tau_by_method["band_minus_random"] = (
-        kendall_tau_by_method["pass_rate_band"] - kendall_tau_by_method["random"]
-    )
+    for selection_method in SELECTION_METHODS:
+        if selection_method == "random":
+            pass
+        else:
+            kendall_tau_by_method[f"{selection_method}_minus_random"] = (
+                kendall_tau_by_method[selection_method]
+                - kendall_tau_by_method["random"]
+            )
     ceiling_by_split = results.groupby(["split", "subset_size"])[
         ["ceiling_low", "ceiling_high", "num_tasks_in_band"]
     ].mean()

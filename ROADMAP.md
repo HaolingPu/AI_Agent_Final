@@ -63,7 +63,7 @@ A loader returns `BenchmarkData(name=..., agents=..., tasks=..., runs=...)` from
 ## 5. Core loop
 
 1. **Split** agents into a selection group and a test group (random / by date / weak-to-strong).
-2. **Select** k tasks from the selection group's results (random, stratified, 30-70 % filter, IRT).
+2. **Select** k tasks from the selection group's results: random; stratified (sort by pass rate, cut into k near-equal groups, one random task per group); 30-70 % pass-rate band (Ndzomga); IRT.
 3. **Rank** the test group on those k tasks.
 4. **Score**: Kendall tau vs. the test group's full-benchmark ranking; compare with the noise ceiling.
 

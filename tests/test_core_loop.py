@@ -6,7 +6,7 @@ import pytest
 
 from subset_eval.data import BenchmarkData, outcome_matrix
 from subset_eval.metrics import noise_ceiling, score_subset
-from subset_eval.select import select_pass_rate_band
+from subset_eval.select import select_pass_rate_band, select_stratified
 from subset_eval.split import split_by_date
 from subset_eval.toy import make_toy_benchmark
 
@@ -162,3 +162,37 @@ def test_pass_rate_band_samples_the_whole_band_when_it_exceeds_k() -> None:
             )
         )
     assert picked_task_ids == {f"band_{i}" for i in range(6)}
+
+
+def test_stratified_takes_one_task_from_each_difficulty_group() -> None:
+    """Pass rates 0.0, 0.1, ..., 0.9; with k = 2 the subset is always one easier-half and one harder-half task."""
+    selection_outcomes = pd.DataFrame(
+        {f"task_{i}": [1] * i + [0] * (10 - i) for i in range(10)}
+    )
+    harder_half = {f"task_{i}" for i in range(5)}
+    for seed in range(20):
+        subset_task_ids = select_stratified(
+            selection_outcomes,
+            subset_size=2,
+            random_generator=np.random.default_rng(seed),
+        )
+        assert len(set(subset_task_ids)) == 2
+        assert len(set(subset_task_ids) & harder_half) == 1
+
+
+def test_stratified_shuffles_tasks_with_the_same_pass_rate() -> None:
+    """Pass rates a 0, b 0.5, c 0.5, d 1: without a random tie-break the groups are always {a, b} / {c, d}."""
+    selection_outcomes = pd.DataFrame(
+        {"a": [0, 0], "b": [1, 0], "c": [1, 0], "d": [1, 1]}
+    )
+    subsets = {
+        frozenset(
+            select_stratified(
+                selection_outcomes,
+                subset_size=2,
+                random_generator=np.random.default_rng(seed),
+            )
+        )
+        for seed in range(50)
+    }
+    assert {frozenset({"a", "b"}), frozenset({"c", "d"})} <= subsets
