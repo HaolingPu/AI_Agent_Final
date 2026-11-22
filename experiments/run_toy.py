@@ -71,6 +71,13 @@ def main() -> None:
         seed=cli_arguments.seed,
     )
     outcomes = outcome_matrix(benchmark)
+    # note (Haoling Pu): p-IRT predicts the tasks outside the subset, so a subset of every task leaves nothing to predict.
+    if max(cli_arguments.subset_sizes) >= outcomes.shape[1]:
+        raise ValueError(
+            f"subset sizes must be below the {outcomes.shape[1]} tasks, got {cli_arguments.subset_sizes}"
+        )
+    else:
+        pass
     # note (Haoling Pu): the date cutoff keeps the same selection fraction as the random split, so only the split kind differs.
     cutoff_date = benchmark.agents["submit_date"].quantile(
         cli_arguments.selection_fraction
@@ -208,6 +215,7 @@ def main() -> None:
                                 test_outcomes,
                                 task_weights,
                                 tiny_benchmarks_fit,
+                                subset_size=subset_size,
                                 anchor_points=selection_method != "random",
                             )
                         )

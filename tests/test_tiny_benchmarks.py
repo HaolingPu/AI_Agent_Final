@@ -3,9 +3,10 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.special import logit
 
+from subset_eval import tiny_benchmarks
 from subset_eval.tiny_benchmarks import (
-    IRT_DIMENSIONS,
     MultidimensionalIrtParameters,
     TinyBenchmarksFit,
     fit_ability,
@@ -14,7 +15,6 @@ from subset_eval.tiny_benchmarks import (
     gp_irt_solve_rate,
     select_anchor_points,
 )
-from subset_eval.toy import make_toy_benchmark
 
 
 def draw_two_dimensional_outcomes(
@@ -28,7 +28,7 @@ def draw_two_dimensional_outcomes(
         (random_generator.random(solve_probability.shape) < solve_probability).astype(
             int
         ),
-        columns=[f"task_{i}" for i in range(60)],
+        columns=[f"task_{task_number}" for task_number in range(60)],
     )
     return outcomes, solve_probability
 
@@ -39,7 +39,7 @@ def test_anchor_points_take_the_task_nearest_each_centroid_weighted_by_cluster_s
     """Clusters {0..6} and {100, 101, 102}: anchors sit at 3 and 101 with weights 0.7 and 0.3."""
     positions = [0, 1, 2, 3, 4, 5, 6, 100, 101, 102]
     task_embedding = pd.DataFrame(
-        {"position": positions}, index=[f"task_{p}" for p in positions]
+        {"position": positions}, index=[f"task_{position}" for position in positions]
     )
     task_weights = select_anchor_points(
         task_embedding, subset_size=2, random_generator=np.random.default_rng(0)
@@ -59,7 +59,7 @@ def test_multidimensional_irt_recovers_the_solve_probabilities() -> None:
 
 
 def test_fit_ability_orders_agents_and_survives_perfect_scores() -> None:
-    """Without a prior, all-solved and all-failed agents run off to the logit clip instead of crashing."""
+    """Without a prior, all-solved and all-failed agents get a large but finite ability instead of crashing."""
     irt = MultidimensionalIrtParameters(
         discrimination=pd.DataFrame({0: [1.0, 1.0, 1.0]}, index=["a", "b", "c"]),
         difficulty=pd.Series({"a": -1.0, "b": 0.0, "c": 1.0}),
@@ -93,11 +93,18 @@ def test_gp_irt_weight_follows_lambda_with_a_quarter_variance_for_anchors() -> N
                 validation_error=validation_error,
                 score_variance=score_variance,
             ),
+            subset_size=len(task_weights),
             anchor_points=anchor_points,
         )
 
     weighted_score = outcomes[task_weights.index] @ task_weights
-    p_irt_score = _estimate(0.0, True)
+    unseen_task_ids = outcomes.columns.difference(task_weights.index)
+    p_irt_score = 3 / 60 * outcomes[task_weights.index].mean(axis=1) + 57 / 60 * (
+        irt.solve_probability(fit_ability(outcomes[task_weights.index], irt))[
+            unseen_task_ids
+        ].mean(axis=1)
+    )
+    assert _estimate(0.0, True).to_numpy() == pytest.approx(p_irt_score.to_numpy())
     assert _estimate(1e6, True).to_numpy() == pytest.approx(weighted_score.to_numpy())
     assert _estimate(balanced_bias, True).to_numpy() == pytest.approx(
         (0.5 * weighted_score + 0.5 * p_irt_score).to_numpy()
@@ -107,21 +114,81 @@ def test_gp_irt_weight_follows_lambda_with_a_quarter_variance_for_anchors() -> N
     )
 
 
-def test_fit_tiny_benchmarks_picks_a_candidate_dimension() -> None:
-    benchmark = make_toy_benchmark(
-        num_agents=60,
-        num_tasks=80,
-        num_trials=1,
-        num_months=12,
-        ability_gain_per_month=0.1,
-        seed=0,
-    )
-    outcomes = benchmark.runs.pivot(
-        index="agent_id", columns="task_id", values="resolved"
-    )
+def test_fit_tiny_benchmarks_finds_two_dimensions_in_two_dimensional_data() -> None:
+    outcomes, _ = draw_two_dimensional_outcomes(np.random.default_rng(0))
     tiny_benchmarks_fit = fit_tiny_benchmarks(
         outcomes, random_generator=np.random.default_rng(0)
     )
     assert tiny_benchmarks_fit.irt.discrimination.index.equals(outcomes.columns)
-    assert tiny_benchmarks_fit.irt.discrimination.shape[1] in IRT_DIMENSIONS
+    assert tiny_benchmarks_fit.irt.discrimination.shape[1] == 2
     assert 0.0 < tiny_benchmarks_fit.validation_error < 0.5
+
+
+def test_fit_tiny_benchmarks_holds_out_unique_agents_and_keeps_the_smallest_near_best_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fake IRT fits predict 0.504 / 0.502 / 0.500 / 0.503 for dimensions 2 / 5 / 10 / 15 against an actual 0.5.
+
+    Dimension 5 is the first within 0.0025 of the best error, so it wins with b = 0.002; the strict minimum would pick 10.
+    Agents agent_0 and agent_5 repeat (as in the date-split bootstrap) and must be held out, never trained on.
+    """
+    predicted_solve_rate_by_dimension = {2: 0.504, 5: 0.502, 10: 0.500, 15: 0.503}
+    agent_ids = [f"agent_{agent_number}" for agent_number in range(10)]
+    # note (Haoling Pu): every agent solves one of the two odd-position tasks, so the actual held-out solve rate is 0.5.
+    selection_outcomes = pd.DataFrame(
+        [
+            [agent_number % 2, 1, 1 - agent_number % 2, 0]
+            for agent_number in list(range(10)) + [0, 5]
+        ],
+        index=agent_ids + ["agent_0", "agent_5"],
+        columns=["task_0", "task_1", "task_2", "task_3"],
+    )
+    training_agent_ids = []
+    held_out_calls = []
+    real_fit_ability = tiny_benchmarks.fit_ability
+
+    def _fake_fit_multidimensional_irt(
+        outcomes: pd.DataFrame,
+        *,
+        dimension: int,
+        random_generator: np.random.Generator,
+    ) -> MultidimensionalIrtParameters:
+        training_agent_ids.append(outcomes.index.tolist())
+        return MultidimensionalIrtParameters(
+            discrimination=pd.DataFrame(
+                np.zeros((outcomes.shape[1], dimension)), index=outcomes.columns
+            ),
+            difficulty=pd.Series(
+                -logit(predicted_solve_rate_by_dimension[dimension]),
+                index=outcomes.columns,
+            ),
+        )
+
+    def _recording_fit_ability(
+        observed_outcomes: pd.DataFrame, irt: MultidimensionalIrtParameters
+    ) -> pd.DataFrame:
+        held_out_calls.append(
+            (observed_outcomes.index.tolist(), observed_outcomes.columns.tolist())
+        )
+        return real_fit_ability(observed_outcomes, irt)
+
+    monkeypatch.setattr(
+        tiny_benchmarks, "fit_multidimensional_irt", _fake_fit_multidimensional_irt
+    )
+    monkeypatch.setattr(tiny_benchmarks, "fit_ability", _recording_fit_ability)
+    tiny_benchmarks_fit = fit_tiny_benchmarks(
+        selection_outcomes, random_generator=np.random.default_rng(0)
+    )
+    held_out_agent_ids = ["agent_0", "agent_5"]
+    assert (
+        training_agent_ids[:4]
+        == [[agent_id for agent_id in agent_ids if agent_id not in held_out_agent_ids]]
+        * 4
+    )
+    assert training_agent_ids[4] == selection_outcomes.index.tolist()
+    assert held_out_calls == [(held_out_agent_ids, ["task_0", "task_2"])] * 4
+    assert tiny_benchmarks_fit.irt.discrimination.shape[1] == 5
+    assert tiny_benchmarks_fit.validation_error == pytest.approx(0.002)
+    assert tiny_benchmarks_fit.score_variance == pytest.approx(
+        selection_outcomes.var(axis=1, ddof=0).mean()
+    )

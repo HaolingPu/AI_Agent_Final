@@ -227,12 +227,6 @@ def select_anchor_points(
     The embedding is a task's results over the selection agents (correctness anchors) or its IRT parameters (IRT anchors).
     Two centroids can share their closest task, so the subset can hold fewer than subset_size tasks.
     """
-    if subset_size > len(task_embedding):
-        raise ValueError(
-            f"subset_size {subset_size} exceeds the {len(task_embedding)} tasks"
-        )
-    else:
-        pass
     embedding = task_embedding.to_numpy(dtype=float)
     # note (Haoling Pu): the authors run K-means with 5 seeds and keep the lowest inertia.
     kmeans = min(
@@ -260,12 +254,14 @@ def gp_irt_solve_rate(
     task_weights: pd.Series,
     tiny_benchmarks_fit: TinyBenchmarksFit,
     *,
+    subset_size: int,
     anchor_points: bool,
 ) -> pd.Series:
     """gp-IRT estimate of each test agent's full-benchmark solve rate (eq. 4.4).
 
     It mixes the weighted subset score with p-IRT (observed results on the subset, IRT predictions on the other tasks).
     lambda = b^2 / (sigma^2 / n + b^2) trusts the subset more when the IRT bias b is large; anchor points use sigma^2 / 4, as in the authors' code.
+    n is the requested subset_size, as in the authors' code, even when two anchors merged into one task.
     """
     seen_task_ids = task_weights.index
     unseen_task_ids = test_outcomes.columns.difference(seen_task_ids)
@@ -275,13 +271,9 @@ def gp_irt_solve_rate(
         1.0 - seen_share
     ) * tiny_benchmarks_fit.irt.solve_probability(ability)[unseen_task_ids].mean(axis=1)
     if anchor_points:
-        weighted_score_variance = tiny_benchmarks_fit.score_variance / (
-            4 * len(seen_task_ids)
-        )
+        weighted_score_variance = tiny_benchmarks_fit.score_variance / (4 * subset_size)
     else:
-        weighted_score_variance = tiny_benchmarks_fit.score_variance / len(
-            seen_task_ids
-        )
+        weighted_score_variance = tiny_benchmarks_fit.score_variance / subset_size
     squared_bias = tiny_benchmarks_fit.validation_error**2
     subset_weight = squared_bias / (weighted_score_variance + squared_bias)
     return (
