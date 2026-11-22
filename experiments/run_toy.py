@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-import zlib
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +15,7 @@ from subset_eval.methods import (
     select_task_weights,
 )
 from subset_eval.metrics import noise_ceiling, score_subset
+from subset_eval.seeding import purpose_generator
 from subset_eval.select import PASS_RATE_BAND
 from subset_eval.split import (
     AgentSplit,
@@ -72,9 +72,8 @@ def main() -> None:
     )
 
     def _purpose_generator(repeat: int, purpose: str) -> np.random.Generator:
-        # note (Haoling Pu): each purpose seeds from its own name, so adding, removing or reordering methods or sizes never changes the other numbers.
-        return np.random.default_rng(
-            [cli_arguments.seed, repeat, zlib.crc32(purpose.encode())]
+        return purpose_generator(
+            seed=cli_arguments.seed, repeat=repeat, purpose=purpose
         )
 
     rows = []
