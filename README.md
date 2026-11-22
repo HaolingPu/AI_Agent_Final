@@ -15,6 +15,7 @@ subset_eval/          shared framework (import from here)
   select.py           task selection: random, stratified, pass-rate band, IRT max-information
   tiny_benchmarks.py  tinyBenchmarks reproduction: anchor points, multidimensional IRT, gp-IRT
   methods.py          every method behind one interface (used by all experiments)
+  seeding.py          one random stream per purpose name
   metrics.py          Kendall tau, top-k overlap, bootstrap noise ceiling
 experiments/          entry points; each writes results/*.csv (gitignored)
 tests/                pytest
@@ -31,8 +32,12 @@ uv run pre-commit install
 
 ```bash
 uv run pytest -q
-uv run python experiments/run_toy.py
+uv run python experiments/run_toy.py          # core loop: every method on random / date / weak-to-strong splits (C1, X5)
+uv run python experiments/run_decay.py        # C2: frozen subsets scored on later windows, shelf life
+uv run python experiments/run_saturation.py   # C3: can the full benchmark still separate its top 10?
 ```
+
+All three run on toy data for now; once a loader exists, they switch to the real benchmark.
 
 ## Adding a benchmark
 
