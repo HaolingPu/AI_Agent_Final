@@ -99,7 +99,7 @@ def test_score_subset_on_a_known_ranking() -> None:
         },
         index=["a", "b", "c", "d"],
     )
-    subset_score = score_subset(outcomes, ["reversed"], top_k=1)
+    subset_score = score_subset(outcomes, outcomes["reversed"], top_k=1)
     # 3 discordant pairs (d against each), 3 pairs tied in the subset: tau-b = -3 / sqrt(6 * 3).
     assert subset_score.kendall_tau == pytest.approx(-3 / np.sqrt(18))
     assert subset_score.top_k_overlap == 0.0
@@ -110,9 +110,9 @@ def test_score_subset_does_not_depend_on_row_order(
 ) -> None:
     """Ties at the k-th score once favoured whichever agent came first."""
     outcomes = outcome_matrix(toy_benchmark)
-    subset_task_ids = outcomes.columns[:5].tolist()
-    forward = score_subset(outcomes, subset_task_ids, top_k=5)
-    backward = score_subset(outcomes.iloc[::-1], subset_task_ids, top_k=5)
+    subset_solve_rate = outcomes.iloc[:, :5].mean(axis=1)
+    forward = score_subset(outcomes, subset_solve_rate, top_k=5)
+    backward = score_subset(outcomes.iloc[::-1], subset_solve_rate, top_k=5)
     assert forward == backward
 
 

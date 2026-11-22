@@ -63,8 +63,8 @@ A loader returns `BenchmarkData(name=..., agents=..., tasks=..., runs=...)` from
 ## 5. Core loop
 
 1. **Split** agents into a selection group and a test group (random / by date / weak-to-strong).
-2. **Select** k tasks from the selection group's results: random; stratified (sort by pass rate, cut into k near-equal groups, one random task per group); 30-70 % pass-rate band (Ndzomga); IRT information (fit a 2PL model on the selection agents, keep the k tasks with the highest Fisher information over their abilities).
-3. **Rank** the test group on those k tasks.
+2. **Select** k tasks from the selection group's results: random; stratified (sort by pass rate, cut into k near-equal groups, one random task per group); 30-70 % pass-rate band (Ndzomga); IRT information (fit a 2PL model on the selection agents, keep the k tasks with the highest Fisher information over their abilities); tinyBenchmarks anchor points (K-means on each task's results or IRT parameters, keep the task nearest each centroid, weight it by its cluster's share of tasks).
+3. **Rank** the test group by its subset score: the plain mean, the anchor-weighted mean, or the tinyBenchmarks gp-IRT estimate (for random and both anchor methods).
 4. **Score**: Kendall tau vs. the test group's full-benchmark ranking; compare with the noise ceiling.
 
 **Compare within a split.** Newer agents are closer to each other, so every subset (and the full benchmark) ranks them less reliably; on toy data even random selection drops in the date split, and so does the noise ceiling. A method's result is therefore read relative to random selection and to the noise ceiling **on the same split**, never as a raw tau across splits.
@@ -80,9 +80,9 @@ Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
 | `subset_eval/data.py` | `BenchmarkData` (the three tables, validated) -> `outcome_matrix` |
 | `subset_eval/loaders/` | raw files -> `BenchmarkData` (Wilson, Wendy) |
 | `split` | tables + split kind -> selection group, test group |
-| `select` | selection group + method + k -> k task ids |
-| `evaluate` | k tasks + test group -> tau, top-5 agreement, score error |
-| `ceiling` | test group -> bootstrap tau range |
+| `subset_eval/select.py` | selection group + method + k -> k task ids |
+| `subset_eval/tiny_benchmarks.py` | tinyBenchmarks reproduction: multidimensional IRT, anchor points, gp-IRT estimate |
+| `subset_eval/metrics.py` | subset estimate + test group -> tau, top-5 agreement; bootstrap noise ceiling |
 | `experiments/` | runs the grid -> `results/*.csv`, `figures/` |
 
 ## 7. Roles

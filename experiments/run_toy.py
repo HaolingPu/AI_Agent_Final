@@ -20,6 +20,11 @@ from subset_eval.select import (
     select_stratified,
 )
 from subset_eval.split import AgentSplit, SplitKind, split_by_date, split_random
+from subset_eval.tiny_benchmarks import (
+    fit_tiny_benchmarks,
+    gp_irt_solve_rate,
+    select_anchor_points,
+)
 from subset_eval.toy import make_toy_benchmark
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,14 @@ SELECTION_METHODS: tuple[SelectionMethod, ...] = (
     "stratified",
     "pass_rate_band",
     "irt_max_information",
+    "anchor_correctness",
+    "anchor_irt",
+)
+# note (Haoling Pu): tinyBenchmarks reports these three strategies with and without gp-IRT; they also get a "<method>_gp_irt" row.
+GP_IRT_METHODS: tuple[SelectionMethod, ...] = (
+    "random",
+    "anchor_correctness",
+    "anchor_irt",
 )
 
 
@@ -117,52 +130,117 @@ def main() -> None:
                 selection_outcomes.mean(axis=0).between(*PASS_RATE_BAND).sum()
             )
             selection_irt_parameters = fit_irt(selection_outcomes)
+            tiny_benchmarks_fit = fit_tiny_benchmarks(
+                selection_outcomes,
+                random_generator=_purpose_generator(
+                    repeat, f"tiny_benchmarks_fit/{split_kind}"
+                ),
+            )
+            # note (Haoling Pu): an IRT anchor embeds each task as its discrimination vector plus its difficulty, unscaled, as in the authors' code.
+            irt_task_embedding = tiny_benchmarks_fit.irt.discrimination.assign(
+                difficulty=tiny_benchmarks_fit.irt.difficulty
+            )
             for selection_method in SELECTION_METHODS:
                 for subset_size in cli_arguments.subset_sizes:
                     selection_purpose = (
                         f"selection/{split_kind}/{selection_method}/{subset_size}"
                     )
+                    # note (Haoling Pu): every method yields task weights summing to 1; all but the anchor methods weigh their tasks equally.
                     if selection_method == "random":
-                        subset_task_ids = random_subset_task_ids_by_size[subset_size]
+                        task_weights = pd.Series(
+                            1.0 / subset_size,
+                            index=random_subset_task_ids_by_size[subset_size],
+                        )
                     elif selection_method == "stratified":
-                        subset_task_ids = select_stratified(
-                            selection_outcomes,
-                            subset_size=subset_size,
-                            random_generator=_purpose_generator(
-                                repeat, selection_purpose
+                        task_weights = pd.Series(
+                            1.0 / subset_size,
+                            index=select_stratified(
+                                selection_outcomes,
+                                subset_size=subset_size,
+                                random_generator=_purpose_generator(
+                                    repeat, selection_purpose
+                                ),
                             ),
                         )
                     elif selection_method == "pass_rate_band":
-                        subset_task_ids = select_pass_rate_band(
-                            selection_outcomes,
+                        task_weights = pd.Series(
+                            1.0 / subset_size,
+                            index=select_pass_rate_band(
+                                selection_outcomes,
+                                subset_size=subset_size,
+                                random_generator=_purpose_generator(
+                                    repeat, selection_purpose
+                                ),
+                            ),
+                        )
+                    elif selection_method == "irt_max_information":
+                        task_weights = pd.Series(
+                            1.0 / subset_size,
+                            index=select_irt_max_information(
+                                selection_irt_parameters, subset_size=subset_size
+                            ),
+                        )
+                    elif selection_method == "anchor_correctness":
+                        task_weights = select_anchor_points(
+                            selection_outcomes.T,
                             subset_size=subset_size,
                             random_generator=_purpose_generator(
                                 repeat, selection_purpose
                             ),
                         )
-                    elif selection_method == "irt_max_information":
-                        subset_task_ids = select_irt_max_information(
-                            selection_irt_parameters, subset_size=subset_size
+                    elif selection_method == "anchor_irt":
+                        task_weights = select_anchor_points(
+                            irt_task_embedding,
+                            subset_size=subset_size,
+                            random_generator=_purpose_generator(
+                                repeat, selection_purpose
+                            ),
                         )
                     else:
                         raise ValueError(f"unknown selection method {selection_method}")
-                    subset_score = score_subset(
-                        test_outcomes, subset_task_ids, top_k=cli_arguments.top_k
-                    )
-                    rows.append(
-                        {
-                            "split": split_kind,
-                            "repeat": repeat,
-                            "method": selection_method,
-                            "subset_size": subset_size,
-                            "num_test_agents": len(agent_split.test_agent_ids),
-                            "num_tasks_in_band": num_tasks_in_band,
-                            "kendall_tau": subset_score.kendall_tau,
-                            "top_k_overlap": subset_score.top_k_overlap,
-                            "ceiling_low": ceiling.kendall_tau_low,
-                            "ceiling_high": ceiling.kendall_tau_high,
-                        }
-                    )
+                    estimated_solve_rate_by_method = {
+                        selection_method: test_outcomes[task_weights.index]
+                        @ task_weights
+                    }
+                    if selection_method in GP_IRT_METHODS:
+                        estimated_solve_rate_by_method[f"{selection_method}_gp_irt"] = (
+                            gp_irt_solve_rate(
+                                test_outcomes,
+                                task_weights,
+                                tiny_benchmarks_fit,
+                                anchor_points=selection_method != "random",
+                            )
+                        )
+                    else:
+                        pass
+                    for (
+                        method_name,
+                        estimated_solve_rate,
+                    ) in estimated_solve_rate_by_method.items():
+                        subset_score = score_subset(
+                            test_outcomes,
+                            estimated_solve_rate,
+                            top_k=cli_arguments.top_k,
+                        )
+                        rows.append(
+                            {
+                                "split": split_kind,
+                                "repeat": repeat,
+                                "method": method_name,
+                                "subset_size": subset_size,
+                                "num_subset_tasks": len(task_weights),
+                                "num_test_agents": len(agent_split.test_agent_ids),
+                                "num_tasks_in_band": num_tasks_in_band,
+                                "irt_dimension": tiny_benchmarks_fit.irt.discrimination.shape[
+                                    1
+                                ],
+                                "kendall_tau": subset_score.kendall_tau,
+                                "top_k_overlap": subset_score.top_k_overlap,
+                                "ceiling_low": ceiling.kendall_tau_low,
+                                "ceiling_high": ceiling.kendall_tau_high,
+                            }
+                        )
+        logger.info(f"repeat {repeat} done")
 
     results = pd.DataFrame(rows)
     cli_arguments.output.parent.mkdir(parents=True, exist_ok=True)
@@ -172,19 +250,17 @@ def main() -> None:
     kendall_tau_by_method = results.pivot_table(
         index=["split", "subset_size"], columns="method", values="kendall_tau"
     )
-    for selection_method in SELECTION_METHODS:
-        if selection_method == "random":
-            pass
-        else:
-            kendall_tau_by_method[f"{selection_method}_minus_random"] = (
-                kendall_tau_by_method[selection_method]
-                - kendall_tau_by_method["random"]
-            )
     ceiling_by_split = results.groupby(["split", "subset_size"])[
-        ["ceiling_low", "ceiling_high", "num_tasks_in_band"]
+        ["ceiling_low", "ceiling_high", "num_tasks_in_band", "irt_dimension"]
     ].mean()
-    kendall_tau_by_method = kendall_tau_by_method.join(ceiling_by_split)
-    print(kendall_tau_by_method.round(3).to_string())
+    print(kendall_tau_by_method.join(ceiling_by_split).round(3).to_string())
+    print("\nKendall tau minus random:")
+    print(
+        kendall_tau_by_method.drop(columns="random")
+        .sub(kendall_tau_by_method["random"], axis=0)
+        .round(3)
+        .to_string()
+    )
 
 
 if __name__ == "__main__":

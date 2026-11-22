@@ -41,11 +41,20 @@ All three are estimated from the existing 0/1 results.
 
 | Paper | Selection | Tasks kept | Test split |
 |---|---|---|---|
-| tinyBenchmarks (arXiv 2402.14992) | IRT: pick informative items, then estimate the full score | ~100 per LLM benchmark | random |
+| tinyBenchmarks (arXiv 2402.14992) | anchor points (cluster items, keep one per cluster, weight by cluster size) + gp-IRT score estimate | ~100 per LLM benchmark | random (also by date) |
 | Agent Psychometrics (arXiv 2604.00594) | IRT + **adaptive testing**: each agent gets the next most informative task given its answers so far | ~40 of 500 on SWE-bench Verified | random |
 | PTA-IRT (2026) | IRT + agent traces | 10 % | random |
 | Ndzomga (arXiv 2603.23749) | keep tasks that 30-70 % of past agents solved | 30-56 % | by date, Terminal-Bench only |
 | PACE (arXiv 2607.02032, Neubig et al.) | cheap non-agentic items + regression predict agentic scores | <1 % of cost | leave-one-out over 14 models |
+
+### tinyBenchmarks, as reproduced here
+
+[subset_eval/tiny_benchmarks.py](subset_eval/tiny_benchmarks.py) follows the paper and, where the paper is vague, the authors' code (github.com/felipemaiapolo/efficbench).
+
+- **IRT model**: multidimensional 2PL, P = sigmoid(ability . discrimination - difficulty). The dimension is picked from 2 / 5 / 10 / 15: hold out every fifth selection agent, fit its ability on the even-numbered tasks, predict the odd-numbered ones; the smallest dimension within 0.0025 of the best error wins.
+- **Anchor points**: K-means (5 seeds, lowest inertia) with k clusters on a task embedding, either the task's results over the selection agents (correctness anchors) or its discrimination vector plus difficulty (IRT anchors). The task nearest each centroid is kept and weighted by its cluster's share of all tasks.
+- **gp-IRT estimate**: lambda x (weighted subset score) + (1 - lambda) x p-IRT, where p-IRT keeps the observed results on the subset and fills the other tasks with IRT predictions from the agent's fitted ability. lambda = b^2 / (sigma^2 / n + b^2): b is the held-out error above, sigma^2 an agent's variance across tasks (averaged), n the subset size; anchor points use sigma^2 / 4.
+- **Differences from the authors**: a MAP fit with fixed Gaussian priors instead of py-irt's variational fit with hierarchical priors; solve rates over several trials stay fractional instead of being thresholded to 0/1; repeated agents from the date-split bootstrap are dropped before the dimension check.
 
 Related: Observational Scaling Laws (arXiv 2405.10938) predicts strong models from weaker public models.
 

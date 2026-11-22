@@ -8,7 +8,12 @@ import pandas as pd
 from subset_eval.irt import IrtParameters
 
 SelectionMethod = Literal[
-    "random", "stratified", "pass_rate_band", "irt_max_information"
+    "random",
+    "stratified",
+    "pass_rate_band",
+    "irt_max_information",
+    "anchor_correctness",
+    "anchor_irt",
 ]
 
 # note (Haoling Pu): Ndzomga (arXiv 2603.23749) keeps tasks that 30-70 % of past agents solved.
@@ -95,7 +100,7 @@ def select_irt_max_information(
     """Keep the tasks with the highest Fisher information over the selection agents' abilities.
 
     The chosen tasks cluster near the selection agents' abilities; newer, stronger agents may sit elsewhere.
-    This is IRT max-information selection, not tinyBenchmarks' anchor-point clustering.
+    This is IRT max-information selection; tinyBenchmarks' anchor points are in subset_eval/tiny_benchmarks.py.
     """
     fisher_information = irt_parameters.fisher_information(
         irt_parameters.ability.to_numpy()

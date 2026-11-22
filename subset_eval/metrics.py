@@ -34,15 +34,18 @@ def rank_agreement(full_solve_rate: np.ndarray, subset_solve_rate: np.ndarray) -
 
 
 def score_subset(
-    test_outcomes: pd.DataFrame, subset_task_ids: list[str], *, top_k: int
+    test_outcomes: pd.DataFrame, estimated_solve_rate: pd.Series, *, top_k: int
 ) -> SubsetScore:
-    """Compare the test agents' ranking on the subset with their ranking on all tasks."""
+    """Compare the test agents' ranking by a subset's estimate with their ranking on all tasks.
+
+    The estimate is the plain subset mean for most methods, or a weighted / gp-IRT estimate for tinyBenchmarks.
+    """
     if top_k > len(test_outcomes):
         raise ValueError(f"top_k {top_k} exceeds the {len(test_outcomes)} test agents")
     else:
         pass
     full_solve_rate = test_outcomes.mean(axis=1)
-    subset_solve_rate = test_outcomes[subset_task_ids].mean(axis=1)
+    subset_solve_rate = estimated_solve_rate.loc[test_outcomes.index]
     # note (Haoling Pu): keep="all" keeps every agent tied at the k-th score, so the overlap does not depend on row order.
     top_full_agent_ids = set(full_solve_rate.nlargest(top_k, keep="all").index)
     top_subset_agent_ids = set(subset_solve_rate.nlargest(top_k, keep="all").index)
