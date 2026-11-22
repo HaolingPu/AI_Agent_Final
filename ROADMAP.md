@@ -69,6 +69,8 @@ A loader returns `BenchmarkData(name=..., agents=..., tasks=..., runs=...)` from
 
 **Compare within a split.** Newer agents are closer to each other, so every subset (and the full benchmark) ranks them less reliably; on toy data even random selection drops in the date split, and so does the noise ceiling. A method's result is therefore read relative to random selection and to the noise ceiling **on the same split**, never as a raw tau across splits.
 
+**Reading the other experiments.** Weak-to-strong defines its groups by the very score being ranked, so its test group is compressed: read it only relative to random, and note that it cannot be done in practice. C2 compares a frozen subset with a refreshed one on the same agents, because raw tau per window mostly tracks which agents fall in that window. C3 reports a fixed 6-month pool next to the growing leaderboard, because the top 10 of a larger pool is packed tighter by itself.
+
 Subset sizes: SWE-bench 25 / 50 / 100 / 200; Terminal-Bench 10 / 20 / 40.
 
 Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
@@ -85,8 +87,8 @@ Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
 | `subset_eval/metrics.py` | subset estimate + test group -> tau, top-5 agreement; bootstrap noise ceiling |
 | `subset_eval/methods.py` | one interface over every method: fit the selection group once, pick weighted subsets, estimate test scores |
 | `experiments/run_toy.py` | every method x split (random / date / weak-to-strong) x size -> `results/toy_core_loop.csv` (C1, X5) |
-| `experiments/run_decay.py` | subsets frozen at a cutoff, scored per later window of agents, shelf life -> `results/toy_decay.csv` (C2) |
-| `experiments/run_saturation.py` | per month: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/toy_saturation.csv` (C3) |
+| `experiments/run_decay.py` | subsets frozen at a cutoff vs. refreshed before each later window, scored on the same window's agents; shelf life = first of two windows in a row where frozen ranks worse -> `results/toy_decay.csv` (C2) |
+| `experiments/run_saturation.py` | per month, for all agents so far and for the last 6 months only: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/toy_saturation.csv` (C3) |
 
 ## 7. Roles
 

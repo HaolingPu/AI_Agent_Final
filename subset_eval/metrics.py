@@ -83,3 +83,20 @@ def noise_ceiling(
     return NoiseCeiling(
         kendall_tau_low=float(kendall_tau_low), kendall_tau_high=float(kendall_tau_high)
     )
+
+
+def separable_pairs(bootstrap_solve_rate: np.ndarray) -> np.ndarray:
+    """For agents ordered best first (rows) with paired bootstrap solve rates (columns), whether each pair stays ordered.
+
+    Pairs follow np.triu_indices(num_agents, k=1): a better agent i against every worse agent j.
+    A pair is separable when the lower end of the 95 % bootstrap interval of rate_i - rate_j is above 0: a per-pair test, not adjusted for the number of pairs.
+    """
+    better_rank, worse_rank = np.triu_indices(len(bootstrap_solve_rate), k=1)
+    return (
+        np.percentile(
+            bootstrap_solve_rate[better_rank] - bootstrap_solve_rate[worse_rank],
+            NOISE_CEILING_PERCENTILES[0],
+            axis=1,
+        )
+        > 0
+    )

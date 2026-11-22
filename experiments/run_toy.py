@@ -47,14 +47,7 @@ def main() -> None:
     cli_arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
-    benchmark = make_toy_benchmark(
-        num_agents=120,
-        num_tasks=300,
-        num_trials=1,
-        num_months=24,
-        ability_gain_per_month=0.1,
-        seed=cli_arguments.seed,
-    )
+    benchmark = make_toy_benchmark(seed=cli_arguments.seed)
     outcomes = outcome_matrix(benchmark)
     # note (Haoling Pu): p-IRT predicts the tasks outside the subset, so a subset of every task leaves nothing to predict.
     if max(cli_arguments.subset_sizes) >= outcomes.shape[1]:
@@ -88,16 +81,17 @@ def main() -> None:
             elif split_kind == "date":
                 agent_split = split_by_date(benchmark.agents, cutoff_date=cutoff_date)
             elif split_kind == "weak_to_strong":
+                # note (Haoling Pu): the groups come from the very score being ranked, so the test group's spread is compressed; read this split only relative to random, never as raw tau.
                 agent_split = split_weak_to_strong(
                     outcomes.mean(axis=1),
                     selection_fraction=cli_arguments.selection_fraction,
                 )
             else:
                 raise ValueError(f"unknown split kind {split_kind}")
+            # note (Haoling Pu): the date and weak-to-strong splits are the same every repeat, so their selection agents are bootstrapped to give each method a real spread.
             if split_kind == "random":
                 selection_agent_ids = agent_split.selection_agent_ids
             else:
-                # note (Haoling Pu): the date and weak-to-strong splits are the same every repeat, so their selection agents are bootstrapped to give each method a real spread.
                 selection_agent_ids = (
                     _purpose_generator(repeat, f"{split_kind}_selection_bootstrap")
                     .choice(

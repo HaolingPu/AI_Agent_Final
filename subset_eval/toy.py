@@ -8,13 +8,14 @@ from subset_eval.data import BenchmarkData
 TOY_START_DATE = pd.Timestamp("2024-01-01")
 
 
+# note (Haoling Pu): the defaults are the toy benchmark every experiment runs on, so C1, C2 and C3 always see the same data.
 def make_toy_benchmark(
     *,
-    num_agents: int,
-    num_tasks: int,
-    num_trials: int,
-    num_months: int,
-    ability_gain_per_month: float,
+    num_agents: int = 120,
+    num_tasks: int = 300,
+    num_trials: int = 1,
+    num_months: int = 24,
+    ability_gain_per_month: float = 0.1,
     seed: int,
 ) -> BenchmarkData:
     """Draw outcomes from a 2PL IRT model where newer agents are stronger.
