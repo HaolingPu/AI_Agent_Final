@@ -1,20 +1,9 @@
 """Task selection methods: each returns the task ids of one subset."""
 
-from typing import Literal
-
 import numpy as np
 import pandas as pd
 
 from subset_eval.irt import IrtParameters
-
-SelectionMethod = Literal[
-    "random",
-    "stratified",
-    "pass_rate_band",
-    "irt_max_information",
-    "anchor_correctness",
-    "anchor_irt",
-]
 
 # note (Haoling Pu): Ndzomga (arXiv 2603.23749) keeps tasks that 30-70 % of past agents solved.
 PASS_RATE_BAND = (0.3, 0.7)

@@ -12,7 +12,9 @@ subset_eval/          shared framework (import from here)
   data.py             BenchmarkData: the unified agents / tasks / runs tables; outcome_matrix()
   toy.py              synthetic benchmark for development
   split.py            agent splits: random, by date, weak-to-strong
-  select.py           task selection methods
+  select.py           task selection: random, stratified, pass-rate band, IRT max-information
+  tiny_benchmarks.py  tinyBenchmarks reproduction: anchor points, multidimensional IRT, gp-IRT
+  methods.py          every method behind one interface (used by all experiments)
   metrics.py          Kendall tau, top-k overlap, bootstrap noise ceiling
 experiments/          entry points; each writes results/*.csv (gitignored)
 tests/                pytest

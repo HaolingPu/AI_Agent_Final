@@ -9,16 +9,14 @@ import numpy as np
 import pandas as pd
 
 from subset_eval.data import outcome_matrix
-from subset_eval.irt import fit_irt
-from subset_eval.metrics import noise_ceiling, score_subset
-from subset_eval.select import (
-    PASS_RATE_BAND,
-    SelectionMethod,
-    select_irt_max_information,
-    select_pass_rate_band,
-    select_random,
-    select_stratified,
+from subset_eval.methods import (
+    SELECTION_METHODS,
+    estimate_solve_rates,
+    fit_selection_group,
+    select_task_weights,
 )
+from subset_eval.metrics import noise_ceiling, score_subset
+from subset_eval.select import PASS_RATE_BAND
 from subset_eval.split import (
     AgentSplit,
     SplitKind,
@@ -26,30 +24,11 @@ from subset_eval.split import (
     split_random,
     split_weak_to_strong,
 )
-from subset_eval.tiny_benchmarks import (
-    fit_tiny_benchmarks,
-    gp_irt_solve_rate,
-    select_anchor_points,
-)
 from subset_eval.toy import make_toy_benchmark
 
 logger = logging.getLogger(__name__)
 
 SPLIT_KINDS: tuple[SplitKind, ...] = ("random", "date", "weak_to_strong")
-SELECTION_METHODS: tuple[SelectionMethod, ...] = (
-    "random",
-    "stratified",
-    "pass_rate_band",
-    "irt_max_information",
-    "anchor_correctness",
-    "anchor_irt",
-)
-# note (Haoling Pu): tinyBenchmarks reports these three strategies with and without gp-IRT; they also get a "<method>_gp_irt" row.
-GP_IRT_METHODS: tuple[SelectionMethod, ...] = (
-    "random",
-    "anchor_correctness",
-    "anchor_irt",
-)
 
 
 def main() -> None:
@@ -100,17 +79,6 @@ def main() -> None:
 
     rows = []
     for repeat in range(cli_arguments.num_repeats):
-        # note (Haoling Pu): the same random subsets serve both splits, so the two splits are a paired comparison.
-        random_subset_task_ids_by_size = {
-            subset_size: select_random(
-                outcomes.columns,
-                subset_size=subset_size,
-                random_generator=_purpose_generator(
-                    repeat, f"random_subsets/{subset_size}"
-                ),
-            )
-            for subset_size in cli_arguments.subset_sizes
-        }
         for split_kind in SPLIT_KINDS:
             if split_kind == "random":
                 agent_split: AgentSplit = split_random(
@@ -146,100 +114,40 @@ def main() -> None:
                 num_bootstrap=cli_arguments.num_bootstrap,
                 random_generator=_purpose_generator(repeat, f"ceiling/{split_kind}"),
             )
-            selection_outcomes = outcomes.loc[selection_agent_ids]
-            # note (Haoling Pu): when k exceeds this count, the band subset is filled with near-band tasks and is no longer Ndzomga's method.
-            num_tasks_in_band = int(
-                selection_outcomes.mean(axis=0).between(*PASS_RATE_BAND).sum()
-            )
-            selection_irt_parameters = fit_irt(selection_outcomes)
-            tiny_benchmarks_fit = fit_tiny_benchmarks(
-                selection_outcomes,
+            selection_group_fit = fit_selection_group(
+                outcomes.loc[selection_agent_ids],
                 random_generator=_purpose_generator(
                     repeat, f"tiny_benchmarks_fit/{split_kind}"
                 ),
             )
-            # note (Haoling Pu): an IRT anchor embeds each task as its discrimination vector plus its difficulty, unscaled, as in the authors' code.
-            irt_task_embedding = tiny_benchmarks_fit.irt.discrimination.assign(
-                difficulty=tiny_benchmarks_fit.irt.difficulty
+            # note (Haoling Pu): when k exceeds this count, the band subset is filled with near-band tasks and is no longer Ndzomga's method.
+            num_tasks_in_band = int(
+                selection_group_fit.selection_outcomes.mean(axis=0)
+                .between(*PASS_RATE_BAND)
+                .sum()
             )
             for selection_method in SELECTION_METHODS:
                 for subset_size in cli_arguments.subset_sizes:
-                    selection_purpose = (
-                        f"selection/{split_kind}/{selection_method}/{subset_size}"
-                    )
-                    # note (Haoling Pu): every method yields task weights summing to 1; all but the anchor methods weigh their tasks equally.
+                    # note (Haoling Pu): random subsets ignore the split's seed, so every split draws the same ones and the splits are a paired comparison.
                     if selection_method == "random":
-                        task_weights = pd.Series(
-                            1.0 / subset_size,
-                            index=random_subset_task_ids_by_size[subset_size],
-                        )
-                    elif selection_method == "stratified":
-                        task_weights = pd.Series(
-                            1.0 / subset_size,
-                            index=select_stratified(
-                                selection_outcomes,
-                                subset_size=subset_size,
-                                random_generator=_purpose_generator(
-                                    repeat, selection_purpose
-                                ),
-                            ),
-                        )
-                    elif selection_method == "pass_rate_band":
-                        task_weights = pd.Series(
-                            1.0 / subset_size,
-                            index=select_pass_rate_band(
-                                selection_outcomes,
-                                subset_size=subset_size,
-                                random_generator=_purpose_generator(
-                                    repeat, selection_purpose
-                                ),
-                            ),
-                        )
-                    elif selection_method == "irt_max_information":
-                        task_weights = pd.Series(
-                            1.0 / subset_size,
-                            index=select_irt_max_information(
-                                selection_irt_parameters, subset_size=subset_size
-                            ),
-                        )
-                    elif selection_method == "anchor_correctness":
-                        task_weights = select_anchor_points(
-                            selection_outcomes.T,
-                            subset_size=subset_size,
-                            random_generator=_purpose_generator(
-                                repeat, selection_purpose
-                            ),
-                        )
-                    elif selection_method == "anchor_irt":
-                        task_weights = select_anchor_points(
-                            irt_task_embedding,
-                            subset_size=subset_size,
-                            random_generator=_purpose_generator(
-                                repeat, selection_purpose
-                            ),
-                        )
+                        selection_purpose = f"random_subsets/{subset_size}"
                     else:
-                        raise ValueError(f"unknown selection method {selection_method}")
-                    estimated_solve_rate_by_method = {
-                        selection_method: test_outcomes[task_weights.index]
-                        @ task_weights
-                    }
-                    if selection_method in GP_IRT_METHODS:
-                        estimated_solve_rate_by_method[f"{selection_method}_gp_irt"] = (
-                            gp_irt_solve_rate(
-                                test_outcomes,
-                                task_weights,
-                                tiny_benchmarks_fit,
-                                subset_size=subset_size,
-                                anchor_points=selection_method != "random",
-                            )
+                        selection_purpose = (
+                            f"selection/{split_kind}/{selection_method}/{subset_size}"
                         )
-                    else:
-                        pass
-                    for (
-                        method_name,
-                        estimated_solve_rate,
-                    ) in estimated_solve_rate_by_method.items():
+                    task_weights = select_task_weights(
+                        selection_method,
+                        selection_group_fit,
+                        subset_size=subset_size,
+                        random_generator=_purpose_generator(repeat, selection_purpose),
+                    )
+                    for method_name, estimated_solve_rate in estimate_solve_rates(
+                        selection_method,
+                        task_weights,
+                        test_outcomes,
+                        selection_group_fit,
+                        subset_size=subset_size,
+                    ).items():
                         subset_score = score_subset(
                             test_outcomes,
                             estimated_solve_rate,
@@ -254,7 +162,7 @@ def main() -> None:
                                 "num_subset_tasks": len(task_weights),
                                 "num_test_agents": len(agent_split.test_agent_ids),
                                 "num_tasks_in_band": num_tasks_in_band,
-                                "irt_dimension": tiny_benchmarks_fit.irt.discrimination.shape[
+                                "irt_dimension": selection_group_fit.tiny_benchmarks_fit.irt.discrimination.shape[
                                     1
                                 ],
                                 "kendall_tau": subset_score.kendall_tau,
