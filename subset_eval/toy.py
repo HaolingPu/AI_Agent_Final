@@ -21,6 +21,7 @@ def make_toy_benchmark(
 
     P(agent i solves task j) = sigmoid(discrimination_j * (ability_i - difficulty_j)),
     and ability_i grows by ability_gain_per_month with the agent's submit month.
+    The data come from the same model that IRT selection fits, so IRT gains on toy data are an upper bound, not evidence.
     """
     random_generator = np.random.default_rng(seed)
     submit_month = np.sort(random_generator.integers(0, num_months, size=num_agents))

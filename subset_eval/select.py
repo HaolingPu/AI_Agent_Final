@@ -7,7 +7,9 @@ import pandas as pd
 
 from subset_eval.irt import IrtParameters
 
-SelectionMethod = Literal["random", "stratified", "pass_rate_band", "irt_information"]
+SelectionMethod = Literal[
+    "random", "stratified", "pass_rate_band", "irt_max_information"
+]
 
 # note (Haoling Pu): Ndzomga (arXiv 2603.23749) keeps tasks that 30-70 % of past agents solved.
 PASS_RATE_BAND = (0.3, 0.7)
@@ -87,18 +89,21 @@ def select_pass_rate_band(
     return ranked_tasks.index[:subset_size].tolist()
 
 
-def select_irt_information(
+def select_irt_max_information(
     irt_parameters: IrtParameters, *, subset_size: int
 ) -> list[str]:
     """Keep the tasks with the highest Fisher information over the selection agents' abilities.
 
-    The information is measured where the selection agents are; newer, stronger agents may sit elsewhere.
+    The chosen tasks cluster near the selection agents' abilities; newer, stronger agents may sit elsewhere.
+    This is IRT max-information selection, not tinyBenchmarks' anchor-point clustering.
     """
-    information = irt_parameters.task_information(irt_parameters.ability.to_numpy())
-    if subset_size > len(information):
+    fisher_information = irt_parameters.fisher_information(
+        irt_parameters.ability.to_numpy()
+    )
+    if subset_size > len(fisher_information):
         raise ValueError(
-            f"subset_size {subset_size} exceeds the {len(information)} tasks"
+            f"subset_size {subset_size} exceeds the {len(fisher_information)} tasks"
         )
     else:
         pass
-    return information.nlargest(subset_size).index.tolist()
+    return fisher_information.nlargest(subset_size).index.tolist()

@@ -14,7 +14,7 @@ from subset_eval.metrics import noise_ceiling, score_subset
 from subset_eval.select import (
     PASS_RATE_BAND,
     SelectionMethod,
-    select_irt_information,
+    select_irt_max_information,
     select_pass_rate_band,
     select_random,
     select_stratified,
@@ -29,7 +29,7 @@ SELECTION_METHODS: tuple[SelectionMethod, ...] = (
     "random",
     "stratified",
     "pass_rate_band",
-    "irt_information",
+    "irt_max_information",
 )
 
 
@@ -92,20 +92,31 @@ def main() -> None:
                     selection_fraction=cli_arguments.selection_fraction,
                     random_generator=_purpose_generator(repeat, "random_split"),
                 )
+                selection_agent_ids = agent_split.selection_agent_ids
             else:
                 agent_split = split_by_date(benchmark.agents, cutoff_date=cutoff_date)
+                # note (Haoling Pu): the date split is the same every repeat, so its selection agents are bootstrapped to give each method a real spread.
+                selection_agent_ids = (
+                    _purpose_generator(repeat, "date_selection_bootstrap")
+                    .choice(
+                        agent_split.selection_agent_ids,
+                        size=len(agent_split.selection_agent_ids),
+                        replace=True,
+                    )
+                    .tolist()
+                )
             test_outcomes = outcomes.loc[agent_split.test_agent_ids]
             ceiling = noise_ceiling(
                 test_outcomes,
                 num_bootstrap=cli_arguments.num_bootstrap,
                 random_generator=_purpose_generator(repeat, f"ceiling/{split_kind}"),
             )
-            selection_outcomes = outcomes.loc[agent_split.selection_agent_ids]
+            selection_outcomes = outcomes.loc[selection_agent_ids]
             # note (Haoling Pu): when k exceeds this count, the band subset is filled with near-band tasks and is no longer Ndzomga's method.
             num_tasks_in_band = int(
                 selection_outcomes.mean(axis=0).between(*PASS_RATE_BAND).sum()
             )
-            selection_irt = fit_irt(selection_outcomes)
+            selection_irt_parameters = fit_irt(selection_outcomes)
             for selection_method in SELECTION_METHODS:
                 for subset_size in cli_arguments.subset_sizes:
                     selection_purpose = (
@@ -129,9 +140,9 @@ def main() -> None:
                                 repeat, selection_purpose
                             ),
                         )
-                    elif selection_method == "irt_information":
-                        subset_task_ids = select_irt_information(
-                            selection_irt, subset_size=subset_size
+                    elif selection_method == "irt_max_information":
+                        subset_task_ids = select_irt_max_information(
+                            selection_irt_parameters, subset_size=subset_size
                         )
                     else:
                         raise ValueError(f"unknown selection method {selection_method}")

@@ -8,7 +8,7 @@ from subset_eval.data import BenchmarkData, outcome_matrix
 from subset_eval.irt import IrtParameters, fit_irt
 from subset_eval.metrics import noise_ceiling, score_subset
 from subset_eval.select import (
-    select_irt_information,
+    select_irt_max_information,
     select_pass_rate_band,
     select_stratified,
 )
@@ -223,15 +223,44 @@ def test_fit_irt_recovers_the_parameters_it_was_drawn_from() -> None:
     assert np.corrcoef(irt_parameters.discrimination, discrimination)[0, 1] > 0.3
 
 
-def test_irt_information_prefers_discriminating_tasks_near_the_agents() -> None:
-    """Information a^2 P (1 - P) peaks for steep tasks whose difficulty matches the agents."""
+def test_irt_max_information_averages_over_all_selection_abilities() -> None:
+    """Abilities -2, 0, 2: the steep task at 2 carries more average information (0.76) than the gentler one at 0 (0.26).
+
+    Measuring information at the middle ability only would pick the task at 0 instead.
+    """
     irt_parameters = IrtParameters(
-        ability=pd.Series([-0.5, 0.0, 0.5]),
-        difficulty=pd.Series(
-            {"steep_middle": 0.0, "flat_middle": 0.0, "steep_far": 4.0}
-        ),
-        discrimination=pd.Series(
-            {"steep_middle": 3.0, "flat_middle": 0.3, "steep_far": 3.0}
-        ),
+        ability=pd.Series([-2.0, 0.0, 2.0]),
+        difficulty=pd.Series({"gentle_middle": 0.0, "steep_high": 2.0}),
+        discrimination=pd.Series({"gentle_middle": 1.5, "steep_high": 3.0}),
     )
-    assert select_irt_information(irt_parameters, subset_size=1) == ["steep_middle"]
+    assert select_irt_max_information(irt_parameters, subset_size=1) == ["steep_high"]
+
+
+def test_fisher_information_integrates_to_the_discrimination() -> None:
+    """Over all abilities, a^2 P (1 - P) integrates to a; a or a^3 in place of a^2 breaks this."""
+    irt_parameters = IrtParameters(
+        ability=pd.Series([0.0]),
+        difficulty=pd.Series({"task_a": -1.0, "task_b": 2.0}),
+        discrimination=pd.Series({"task_a": 0.7, "task_b": 2.5}),
+    )
+    abilities = np.linspace(-40.0, 40.0, 8001)
+    integral = irt_parameters.fisher_information(abilities) * (
+        abilities[-1] - abilities[0]
+    )
+    assert integral.to_numpy() == pytest.approx([0.7, 2.5], rel=1e-3)
+
+
+def test_fit_irt_uses_fractional_solve_rates() -> None:
+    """A task every agent solves half the time sits near the mean ability; rounding 0.5 to 0 would push it far above."""
+    random_generator = np.random.default_rng(1)
+    ability = random_generator.normal(0.0, 1.0, size=100)
+    difficulty = np.linspace(-2.0, 2.0, 20)
+    solve_probability = 1.0 / (1.0 + np.exp(-(ability[:, None] - difficulty[None, :])))
+    outcomes = pd.DataFrame(
+        (random_generator.random(solve_probability.shape) < solve_probability).astype(
+            float
+        )
+    )
+    outcomes["half"] = 0.5
+    irt_parameters = fit_irt(outcomes)
+    assert abs(irt_parameters.difficulty["half"]) < 1.0
