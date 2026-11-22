@@ -6,7 +6,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-SplitKind = Literal["random", "date"]
+SplitKind = Literal["random", "date", "weak_to_strong"]
 
 
 @dataclass(kw_only=True)
@@ -46,4 +46,25 @@ def split_by_date(agents: pd.DataFrame, *, cutoff_date: pd.Timestamp) -> AgentSp
     return AgentSplit(
         selection_agent_ids=agents.loc[is_before_cutoff, "agent_id"].tolist(),
         test_agent_ids=agents.loc[~is_before_cutoff, "agent_id"].tolist(),
+    )
+
+
+def split_weak_to_strong(
+    full_solve_rate: pd.Series, *, selection_fraction: float
+) -> AgentSplit:
+    """The weakest agents by full-benchmark solve rate select; the strongest are tested.
+
+    This isolates ability from time: a date split mixes it with everything else that changes between agent generations.
+    Ties in solve rate are broken by agent id, so the split never depends on row order.
+    """
+    agent_ids_weakest_first = (
+        full_solve_rate.rename_axis("agent_id")
+        .reset_index(name="solve_rate")
+        .sort_values(["solve_rate", "agent_id"])["agent_id"]
+        .tolist()
+    )
+    num_selection_agents = round(selection_fraction * len(agent_ids_weakest_first))
+    return AgentSplit(
+        selection_agent_ids=agent_ids_weakest_first[:num_selection_agents],
+        test_agent_ids=agent_ids_weakest_first[num_selection_agents:],
     )

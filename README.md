@@ -11,7 +11,7 @@ A small subset of benchmark tasks can rank agents almost like the full benchmark
 subset_eval/          shared framework (import from here)
   data.py             BenchmarkData: the unified agents / tasks / runs tables; outcome_matrix()
   toy.py              synthetic benchmark for development
-  split.py            agent splits: random, by date
+  split.py            agent splits: random, by date, weak-to-strong
   select.py           task selection methods
   metrics.py          Kendall tau, top-k overlap, bootstrap noise ceiling
 experiments/          entry points; each writes results/*.csv (gitignored)

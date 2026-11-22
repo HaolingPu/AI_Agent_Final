@@ -12,7 +12,7 @@ from subset_eval.select import (
     select_pass_rate_band,
     select_stratified,
 )
-from subset_eval.split import split_by_date
+from subset_eval.split import split_by_date, split_weak_to_strong
 from subset_eval.toy import make_toy_benchmark
 
 
@@ -83,6 +83,18 @@ def test_split_by_date_puts_the_cutoff_day_in_the_test_group(
     assert len(agent_split.selection_agent_ids) + len(agent_split.test_agent_ids) == 30
     assert (submit_date[agent_split.selection_agent_ids] < cutoff_date).all()
     assert (submit_date[agent_split.test_agent_ids] >= cutoff_date).all()
+
+
+def test_weak_to_strong_tests_the_strongest_and_breaks_ties_by_agent_id() -> None:
+    """Solve rates a 0.1, b 0.5, c 0.5, e 0.7, d 0.9; two of five select, and the b-c tie at the cut goes to agent id."""
+    full_solve_rate = pd.Series({"d": 0.9, "c": 0.5, "b": 0.5, "a": 0.1, "e": 0.7})
+    agent_split = split_weak_to_strong(full_solve_rate, selection_fraction=0.4)
+    assert agent_split.selection_agent_ids == ["a", "b"]
+    assert agent_split.test_agent_ids == ["c", "e", "d"]
+    reversed_split = split_weak_to_strong(
+        full_solve_rate.iloc[::-1], selection_fraction=0.4
+    )
+    assert reversed_split == agent_split
 
 
 def test_score_subset_on_a_known_ranking() -> None:

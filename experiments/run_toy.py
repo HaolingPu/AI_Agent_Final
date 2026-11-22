@@ -19,7 +19,13 @@ from subset_eval.select import (
     select_random,
     select_stratified,
 )
-from subset_eval.split import AgentSplit, SplitKind, split_by_date, split_random
+from subset_eval.split import (
+    AgentSplit,
+    SplitKind,
+    split_by_date,
+    split_random,
+    split_weak_to_strong,
+)
 from subset_eval.tiny_benchmarks import (
     fit_tiny_benchmarks,
     gp_irt_solve_rate,
@@ -29,7 +35,7 @@ from subset_eval.toy import make_toy_benchmark
 
 logger = logging.getLogger(__name__)
 
-SPLIT_KINDS: tuple[SplitKind, ...] = ("random", "date")
+SPLIT_KINDS: tuple[SplitKind, ...] = ("random", "date", "weak_to_strong")
 SELECTION_METHODS: tuple[SelectionMethod, ...] = (
     "random",
     "stratified",
@@ -112,12 +118,21 @@ def main() -> None:
                     selection_fraction=cli_arguments.selection_fraction,
                     random_generator=_purpose_generator(repeat, "random_split"),
                 )
+            elif split_kind == "date":
+                agent_split = split_by_date(benchmark.agents, cutoff_date=cutoff_date)
+            elif split_kind == "weak_to_strong":
+                agent_split = split_weak_to_strong(
+                    outcomes.mean(axis=1),
+                    selection_fraction=cli_arguments.selection_fraction,
+                )
+            else:
+                raise ValueError(f"unknown split kind {split_kind}")
+            if split_kind == "random":
                 selection_agent_ids = agent_split.selection_agent_ids
             else:
-                agent_split = split_by_date(benchmark.agents, cutoff_date=cutoff_date)
-                # note (Haoling Pu): the date split is the same every repeat, so its selection agents are bootstrapped to give each method a real spread.
+                # note (Haoling Pu): the date and weak-to-strong splits are the same every repeat, so their selection agents are bootstrapped to give each method a real spread.
                 selection_agent_ids = (
-                    _purpose_generator(repeat, "date_selection_bootstrap")
+                    _purpose_generator(repeat, f"{split_kind}_selection_bootstrap")
                     .choice(
                         agent_split.selection_agent_ids,
                         size=len(agent_split.selection_agent_ids),
