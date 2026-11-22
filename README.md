@@ -2,6 +2,7 @@
 
 A small subset of benchmark tasks can rank agents almost like the full benchmark, but prior work tests this on the same agents it selects from. We select subsets from older or weaker agents' results and check whether they still rank newer and stronger agents, on SWE-bench Verified and Terminal-Bench 2.0.
 
+- [ONBOARDING.md](ONBOARDING.md): **start here** if you are writing a loader or running experiments.
 - [ROADMAP.md](ROADMAP.md): plan, core claims, data, roles and timeline.
 - [BACKGROUND.md](BACKGROUND.md): prior work and concepts (IRT, Kendall tau, noise ceiling, decay curve).
 
@@ -32,12 +33,12 @@ uv run pre-commit install
 
 ```bash
 uv run pytest -q
-uv run python experiments/run_toy.py          # core loop: every method on random / date / weak-to-strong splits (C1, X5)
+uv run python experiments/run_core_loop.py    # core loop: every method on random / date / weak-to-strong splits (C1, X5)
 uv run python experiments/run_decay.py        # C2: frozen subsets scored on later windows, shelf life
 uv run python experiments/run_saturation.py   # C3: can the full benchmark still separate its top 10?
 ```
 
-All three run on toy data for now; once a loader exists, they switch to the real benchmark.
+Each script takes `--benchmark` (default `toy`, synthetic data); a real benchmark becomes available once its loader is registered in `subset_eval/loaders/__init__.py`. Results go to `results/<benchmark>_<experiment>.csv`.
 
 ## Adding a benchmark
 

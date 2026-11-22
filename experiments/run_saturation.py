@@ -8,14 +8,15 @@ The bootstrap resamples tasks, not runs: "separable" means separable given these
 import argparse
 import logging
 from pathlib import Path
+from typing import get_args
 
 import numpy as np
 import pandas as pd
 
 from subset_eval.data import outcome_matrix
+from subset_eval.loaders import BenchmarkName, load_benchmark
 from subset_eval.metrics import noise_ceiling, separable_pairs
 from subset_eval.seeding import purpose_generator
-from subset_eval.toy import make_toy_benchmark
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,18 @@ def main() -> None:
     parser.add_argument("--num-bootstrap", type=int, default=1000)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--pool-months", type=int, default=6)
-    parser.add_argument(
-        "--output", type=Path, default=Path("results/toy_saturation.csv")
-    )
+    parser.add_argument("--benchmark", choices=get_args(BenchmarkName), default="toy")
+    parser.add_argument("--raw-data-dir", type=Path, default=Path("data/raw"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results"))
     cli_arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
-    benchmark = make_toy_benchmark(seed=cli_arguments.seed)
+    benchmark = load_benchmark(
+        cli_arguments.benchmark,
+        raw_data_dir=cli_arguments.raw_data_dir,
+        seed=cli_arguments.seed,
+    )
+    output_path = cli_arguments.output_dir / f"{cli_arguments.benchmark}_saturation.csv"
     outcomes = outcome_matrix(benchmark)
     submit_date = benchmark.agents.set_index("agent_id")["submit_date"]
     num_tasks = outcomes.shape[1]
@@ -118,9 +124,9 @@ def main() -> None:
                 )
 
     results = pd.DataFrame(rows)
-    cli_arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    results.to_csv(cli_arguments.output, index=False)
-    logger.info(f"wrote {len(results)} rows to {cli_arguments.output}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    results.to_csv(output_path, index=False)
+    logger.info(f"wrote {len(results)} rows to {output_path}")
     print(
         results.pivot(
             index="month",

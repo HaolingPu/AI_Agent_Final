@@ -86,9 +86,9 @@ Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
 | `subset_eval/tiny_benchmarks.py` | tinyBenchmarks reproduction: multidimensional IRT, anchor points, gp-IRT estimate |
 | `subset_eval/metrics.py` | subset estimate + test group -> tau, top-5 agreement; bootstrap noise ceiling |
 | `subset_eval/methods.py` | one interface over every method: fit the selection group once, pick weighted subsets, estimate test scores |
-| `experiments/run_toy.py` | every method x split (random / date / weak-to-strong) x size -> `results/toy_core_loop.csv` (C1, X5) |
-| `experiments/run_decay.py` | subsets frozen at a cutoff vs. refreshed before each later window, scored on the same window's agents; shelf life = first of two windows in a row where frozen ranks worse -> `results/toy_decay.csv` (C2) |
-| `experiments/run_saturation.py` | per month, for all agents so far and for the last 6 months only: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/toy_saturation.csv` (C3) |
+| `experiments/run_core_loop.py` | every method x split (random / date / weak-to-strong) x size -> `results/<benchmark>_core_loop.csv` (C1, X5) |
+| `experiments/run_decay.py` | subsets frozen at a cutoff vs. refreshed before each later window, scored on the same window's agents; shelf life = first of two windows in a row where frozen ranks worse -> `results/<benchmark>_decay.csv` (C2) |
+| `experiments/run_saturation.py` | per month, for all agents so far and for the last 6 months only: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/<benchmark>_saturation.csv` (C3) |
 
 ## 7. Roles
 

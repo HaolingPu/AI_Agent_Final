@@ -7,12 +7,14 @@ So their tau gap measures staleness alone, not which agents happen to fall in a 
 import argparse
 import logging
 from pathlib import Path
+from typing import get_args
 
 import numpy as np
 import pandas as pd
 
 from subset_eval.data import outcome_matrix
 from subset_eval.decay import shelf_life_months, window_start_month
+from subset_eval.loaders import BenchmarkName, load_benchmark
 from subset_eval.methods import (
     SELECTION_METHODS,
     estimate_solve_rates,
@@ -21,7 +23,6 @@ from subset_eval.methods import (
 )
 from subset_eval.metrics import noise_ceiling, score_subset
 from subset_eval.seeding import purpose_generator
-from subset_eval.toy import make_toy_benchmark
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +39,18 @@ def main() -> None:
     parser.add_argument("--window-months", type=int, default=3)
     parser.add_argument("--min-test-agents", type=int, default=8)
     parser.add_argument("--top-k", type=int, default=5)
-    parser.add_argument("--output", type=Path, default=Path("results/toy_decay.csv"))
+    parser.add_argument("--benchmark", choices=get_args(BenchmarkName), default="toy")
+    parser.add_argument("--raw-data-dir", type=Path, default=Path("data/raw"))
+    parser.add_argument("--output-dir", type=Path, default=Path("results"))
     cli_arguments = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
-    benchmark = make_toy_benchmark(seed=cli_arguments.seed)
+    benchmark = load_benchmark(
+        cli_arguments.benchmark,
+        raw_data_dir=cli_arguments.raw_data_dir,
+        seed=cli_arguments.seed,
+    )
+    output_path = cli_arguments.output_dir / f"{cli_arguments.benchmark}_decay.csv"
     outcomes = outcome_matrix(benchmark)
     # note (Haoling Pu): p-IRT predicts the tasks outside the subset, so a subset of every task leaves nothing to predict.
     if max(cli_arguments.subset_sizes) >= outcomes.shape[1]:
@@ -189,9 +197,9 @@ def main() -> None:
         logger.info(f"repeat {repeat} done")
 
     results = pd.DataFrame(rows)
-    cli_arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    results.to_csv(cli_arguments.output, index=False)
-    logger.info(f"wrote {len(results)} rows to {cli_arguments.output}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    results.to_csv(output_path, index=False)
+    logger.info(f"wrote {len(results)} rows to {output_path}")
 
     def _by_window(value_column: str) -> pd.DataFrame:
         return results.pivot_table(
