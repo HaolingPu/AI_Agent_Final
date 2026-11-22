@@ -5,8 +5,13 @@ import pandas as pd
 import pytest
 
 from subset_eval.data import BenchmarkData, outcome_matrix
+from subset_eval.irt import IrtParameters, fit_irt
 from subset_eval.metrics import noise_ceiling, score_subset
-from subset_eval.select import select_pass_rate_band, select_stratified
+from subset_eval.select import (
+    select_irt_information,
+    select_pass_rate_band,
+    select_stratified,
+)
 from subset_eval.split import split_by_date
 from subset_eval.toy import make_toy_benchmark
 
@@ -196,3 +201,37 @@ def test_stratified_shuffles_tasks_with_the_same_pass_rate() -> None:
         for seed in range(50)
     }
     assert {frozenset({"a", "b"}), frozenset({"c", "d"})} <= subsets
+
+
+def test_fit_irt_recovers_the_parameters_it_was_drawn_from() -> None:
+    """A sign error in the gradient would flip or flatten the recovered abilities and difficulties."""
+    random_generator = np.random.default_rng(0)
+    ability = random_generator.normal(0.0, 1.0, size=200)
+    difficulty = random_generator.normal(0.0, 1.0, size=60)
+    discrimination = random_generator.lognormal(0.0, 0.3, size=60)
+    solve_probability = 1.0 / (
+        1.0 + np.exp(-discrimination * (ability[:, None] - difficulty[None, :]))
+    )
+    outcomes = pd.DataFrame(
+        (random_generator.random(solve_probability.shape) < solve_probability).astype(
+            int
+        )
+    )
+    irt_parameters = fit_irt(outcomes)
+    assert np.corrcoef(irt_parameters.ability, ability)[0, 1] > 0.9
+    assert np.corrcoef(irt_parameters.difficulty, difficulty)[0, 1] > 0.9
+    assert np.corrcoef(irt_parameters.discrimination, discrimination)[0, 1] > 0.3
+
+
+def test_irt_information_prefers_discriminating_tasks_near_the_agents() -> None:
+    """Information a^2 P (1 - P) peaks for steep tasks whose difficulty matches the agents."""
+    irt_parameters = IrtParameters(
+        ability=pd.Series([-0.5, 0.0, 0.5]),
+        difficulty=pd.Series(
+            {"steep_middle": 0.0, "flat_middle": 0.0, "steep_far": 4.0}
+        ),
+        discrimination=pd.Series(
+            {"steep_middle": 3.0, "flat_middle": 0.3, "steep_far": 3.0}
+        ),
+    )
+    assert select_irt_information(irt_parameters, subset_size=1) == ["steep_middle"]

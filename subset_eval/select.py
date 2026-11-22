@@ -5,7 +5,9 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-SelectionMethod = Literal["random", "stratified", "pass_rate_band"]
+from subset_eval.irt import IrtParameters
+
+SelectionMethod = Literal["random", "stratified", "pass_rate_band", "irt_information"]
 
 # note (Haoling Pu): Ndzomga (arXiv 2603.23749) keeps tasks that 30-70 % of past agents solved.
 PASS_RATE_BAND = (0.3, 0.7)
@@ -83,3 +85,20 @@ def select_pass_rate_band(
         }
     ).sort_values(["distance_to_band", "tie_break_draw"])
     return ranked_tasks.index[:subset_size].tolist()
+
+
+def select_irt_information(
+    irt_parameters: IrtParameters, *, subset_size: int
+) -> list[str]:
+    """Keep the tasks with the highest Fisher information over the selection agents' abilities.
+
+    The information is measured where the selection agents are; newer, stronger agents may sit elsewhere.
+    """
+    information = irt_parameters.task_information(irt_parameters.ability.to_numpy())
+    if subset_size > len(information):
+        raise ValueError(
+            f"subset_size {subset_size} exceeds the {len(information)} tasks"
+        )
+    else:
+        pass
+    return information.nlargest(subset_size).index.tolist()

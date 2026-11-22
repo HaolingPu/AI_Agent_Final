@@ -9,10 +9,12 @@ import numpy as np
 import pandas as pd
 
 from subset_eval.data import outcome_matrix
+from subset_eval.irt import fit_irt
 from subset_eval.metrics import noise_ceiling, score_subset
 from subset_eval.select import (
     PASS_RATE_BAND,
     SelectionMethod,
+    select_irt_information,
     select_pass_rate_band,
     select_random,
     select_stratified,
@@ -27,6 +29,7 @@ SELECTION_METHODS: tuple[SelectionMethod, ...] = (
     "random",
     "stratified",
     "pass_rate_band",
+    "irt_information",
 )
 
 
@@ -102,6 +105,7 @@ def main() -> None:
             num_tasks_in_band = int(
                 selection_outcomes.mean(axis=0).between(*PASS_RATE_BAND).sum()
             )
+            selection_irt = fit_irt(selection_outcomes)
             for selection_method in SELECTION_METHODS:
                 for subset_size in cli_arguments.subset_sizes:
                     selection_purpose = (
@@ -124,6 +128,10 @@ def main() -> None:
                             random_generator=_purpose_generator(
                                 repeat, selection_purpose
                             ),
+                        )
+                    elif selection_method == "irt_information":
+                        subset_task_ids = select_irt_information(
+                            selection_irt, subset_size=subset_size
                         )
                     else:
                         raise ValueError(f"unknown selection method {selection_method}")
