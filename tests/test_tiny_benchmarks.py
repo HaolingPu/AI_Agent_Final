@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.optimize import OptimizeResult
 from scipy.special import logit
 
 from subset_eval import tiny_benchmarks
@@ -71,6 +72,34 @@ def test_fit_ability_orders_agents_and_survives_perfect_scores() -> None:
     )
     ability = fit_ability(observed_outcomes, irt)[0]
     assert ability["all"] > ability["some"] > ability["none"]
+
+
+@pytest.mark.parametrize(
+    ("status", "is_kept"), [(2, True), (1, False)], ids=["precision_loss", "maxiter"]
+)
+def test_fit_ability_keeps_a_precision_loss_stop_and_raises_on_other_failures(
+    monkeypatch: pytest.MonkeyPatch, status: int, is_kept: bool
+) -> None:
+    """A drifting ability on real SWE-bench data stopped BFGS with precision loss (status 2), which crashed the C2 run."""
+
+    def _stopped_minimize(
+        *arguments: object, **keyword_arguments: object
+    ) -> OptimizeResult:
+        return OptimizeResult(
+            x=np.array([25.0]), success=False, status=status, message="stopped"
+        )
+
+    monkeypatch.setattr(tiny_benchmarks, "minimize", _stopped_minimize)
+    irt = MultidimensionalIrtParameters(
+        discrimination=pd.DataFrame({0: [1.0]}, index=["a"]),
+        difficulty=pd.Series({"a": 0.0}),
+    )
+    observed_outcomes = pd.DataFrame([[1]], index=["agent"], columns=["a"])
+    if is_kept:
+        assert fit_ability(observed_outcomes, irt).loc["agent", 0] == 25.0
+    else:
+        with pytest.raises(RuntimeError, match="did not converge"):
+            fit_ability(observed_outcomes, irt)
 
 
 def test_gp_irt_weight_follows_lambda_with_a_quarter_variance_for_anchors() -> None:
