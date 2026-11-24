@@ -120,5 +120,5 @@ Everyone owns data or framework **and** one core claim end to end (experiments, 
 
 - [ ] Terminal-Bench: dates for the ~18 submissions whose job folders are not named by date
 - [ ] Terminal-Bench: 89 vs 90 tasks; drop submissions with missing trials or 2.1 jobs
-- [ ] SWE-bench: what to do with the 7 submissions without per-task results (drop)
+- [x] SWE-bench: dropped the 7 submissions without per-task results and 2 whose per-task results contradict their reported score (10.2 % vs 52.8 %, 0 % vs 69.6 %); 173 of 182 kept
 - [ ] What exactly is due on 12/03 (report, presentation, code)?
