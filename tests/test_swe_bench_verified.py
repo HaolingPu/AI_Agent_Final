@@ -70,3 +70,16 @@ def test_cost_is_known_only_for_mini_swe_agent_runs(swe_bench: BenchmarkData) ->
     scaffold = swe_bench.agents.set_index("agent_id")["scaffold"]
     assert (scaffold[has_cost[has_cost].index] == "mini-SWE-agent").all()
     assert swe_bench.runs["total_tokens"].isna().all()
+
+
+def test_mini_swe_agent_variant_dates_agents_by_model_release() -> None:
+    mini_swe_agent = load_benchmark(
+        "swe_bench_verified_mini_swe_agent", raw_data_dir=RAW_DATA_DIR, seed=0
+    )
+    assert outcome_matrix(mini_swe_agent).shape == (39, 500)
+    assert (mini_swe_agent.agents["scaffold"] == "mini-SWE-agent").all()
+    # note (Wilson Zheng): Claude Sonnet 4.5 was re-run on 2026-02-17 but released on 2025-09-29.
+    agents = mini_swe_agent.agents.set_index("agent_id")
+    assert str(
+        agents.loc["20260217_mini-v2.0.0_claude-4-5-sonnet-high", "submit_date"].date()
+    ) == "2025-09-29"

@@ -193,3 +193,21 @@ def load_swe_bench_verified(raw_data_dir: Path) -> BenchmarkData:
         tasks=tasks,
         runs=runs,
     )
+
+
+def load_swe_bench_verified_mini_swe_agent(raw_data_dir: Path) -> BenchmarkData:
+    """X3: only the mini-SWE-agent runs (one scaffold, many models), dated by the model's release instead of the submission.
+
+    mini-SWE-agent re-runs older models in batches (11 submissions on 2026-02-17 alone), so its submit date says little about when a model appeared.
+    """
+    swe_bench = load_swe_bench_verified(raw_data_dir)
+    is_mini_swe_agent = swe_bench.agents["scaffold"] == "mini-SWE-agent"
+    agents = swe_bench.agents[is_mini_swe_agent].reset_index(drop=True)
+    # note (Wilson Zheng): every mini-SWE-agent submission reports its model's release date; BenchmarkData rejects a missing one.
+    agents["submit_date"] = agents["model_release_date"]
+    return BenchmarkData(
+        name="swe_bench_verified_mini_swe_agent",
+        agents=agents,
+        tasks=swe_bench.tasks,
+        runs=swe_bench.runs[swe_bench.runs["agent_id"].isin(agents["agent_id"])],
+    )
