@@ -118,7 +118,7 @@ Everyone owns data or framework **and** one core claim end to end (experiments, 
 
 ## 10. Open checks
 
-- [ ] Terminal-Bench: dates for the ~18 submissions whose job folders are not named by date
-- [ ] Terminal-Bench: 89 vs 90 tasks; drop submissions with missing trials or 2.1 jobs
+- [x] Terminal-Bench: every agent is dated by the day its first trial started (no job folder names needed)
+- [x] Terminal-Bench: 89 tasks (`install-windows-3-11` is a misspelling of `install-windows-3.11`); 2.1 trials dropped (one submission); 74 of 75 kept; Crux keeps only its Opus 4.6 trials
 - [ ] SWE-bench: what to do with the 7 submissions without per-task results (drop)
 - [ ] What exactly is due on 12/03 (report, presentation, code)?
