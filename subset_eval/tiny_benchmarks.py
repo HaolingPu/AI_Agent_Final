@@ -16,6 +16,7 @@ VALIDATION_AGENT_STRIDE = 5
 NUM_KMEANS_RESTARTS = 5
 LOGIT_CLIP = 30.0
 LOG_EPSILON = 1e-10
+BFGS_PRECISION_LOSS_STATUS = 2
 # note (Haoling Pu): the authors fit hierarchical priors by variational inference (py-irt); a MAP fit with fixed Gaussian priors stands in for it.
 ABILITY_PRIOR_SD = 1.0
 DISCRIMINATION_PRIOR_SD = 1.0
@@ -159,11 +160,13 @@ def fit_ability(
             jac=True,
             method="BFGS",
         )
-        if not result.success:
-            raise RuntimeError(f"ability fit did not converge: {result.message}")
+        # note (Haoling Pu): subset results the IRT fits perfectly send the ability drifting until the loss is flat, and BFGS stops with "precision loss" (status 2); that point is kept, as in the authors' code. Status 2 also covers a non-finite loss, so the point must be finite.
+        if result.success or (
+            result.status == BFGS_PRECISION_LOSS_STATUS and np.isfinite(result.x).all()
+        ):
+            abilities.append(result.x)
         else:
-            pass
-        abilities.append(result.x)
+            raise RuntimeError(f"ability fit did not converge: {result.message}")
     return pd.DataFrame(abilities, index=observed_outcomes.index)
 
 
