@@ -208,7 +208,6 @@ def main() -> None:
             values=value_column,
         ).sort_index(axis=1)
 
-    mean_gap = _by_window("kendall_tau_gap")
     print(
         "Frozen subset, mean Kendall tau per window (columns: months after the cutoff):"
     )
@@ -223,11 +222,17 @@ def main() -> None:
     print(
         "\nMean tau gap, frozen minus refreshed (negative = the frozen subset went stale):"
     )
-    print(mean_gap.round(3).to_string())
+    print(_by_window("kendall_tau_gap").round(3).to_string())
+    # note (Haoling Pu): repeats resample the selection agents only, so the band is narrower than the full uncertainty; random's gap is 0 by construction, so its shelf life is always NaN.
     print(
-        "\nShelf life (months after the cutoff; NaN = never behind two windows in a row):"
+        f"\nShelf life (months after the cutoff; the first of two windows in a row whose whole 95 % band of the gap over {results['repeat'].nunique()} repeats is below 0; "
+        "NaN = never behind in two windows in a row):"
     )
-    print(shelf_life_months(mean_gap).unstack("subset_size").to_string())
+    print(
+        shelf_life_months(results, window_months=cli_arguments.window_months)
+        .unstack("subset_size")
+        .to_string()
+    )
 
 
 if __name__ == "__main__":

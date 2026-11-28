@@ -74,23 +74,43 @@ def test_window_start_month_with_a_mid_month_cutoff_and_a_year_rollover() -> Non
     }
 
 
-def test_shelf_life_needs_two_windows_behind_in_a_row_and_respects_month_order() -> (
-    None
-):
-    """Columns arrive as 6, 0, 3; a single dip does not count."""
-    mean_gap_by_window = pd.DataFrame(
-        {
-            6: [0.1, -0.1, -0.1, 0.1],
-            0: [0.0, 0.0, -0.1, 0.0],
-            3: [0.1, -0.1, -0.1, -0.1],
-        },
-        index=["never_behind", "behind_from_3", "behind_from_0", "single_dip"],
+def decay_rows(gaps_by_window: dict[int, list[float]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "subset_size": 10,
+                "method": "irt_max_information",
+                "repeat": repeat,
+                "window_start_month": window,
+                "kendall_tau_gap": gap,
+            }
+            for window, gaps in gaps_by_window.items()
+            for repeat, gap in enumerate(gaps)
+        ]
     )
-    shelf_life = shelf_life_months(mean_gap_by_window)
-    assert np.isnan(shelf_life["never_behind"])
-    assert shelf_life["behind_from_3"] == 3
-    assert shelf_life["behind_from_0"] == 0
-    assert np.isnan(shelf_life["single_dip"])
+
+
+def test_shelf_life_needs_the_whole_band_below_zero_two_windows_in_a_row() -> None:
+    """Windows arrive out of order; a mean below 0 whose band crosses 0 does not count, nor does a single dip or a run across a skipped window."""
+    clearly_behind = [-0.1, -0.1, -0.1]
+    band_crosses_zero = [-0.2, -0.2, 0.05]
+    cases = {
+        "behind_from_3": ({6: clearly_behind, 0: [0.0] * 3, 3: clearly_behind}, 3),
+        "mean_below_zero_only": (
+            {0: [0.0] * 3, 3: band_crosses_zero, 6: band_crosses_zero},
+            None,
+        ),
+        "single_dip": ({0: [0.0] * 3, 3: clearly_behind, 6: [0.1] * 3}, None),
+        "window_3_skipped": ({0: clearly_behind, 6: clearly_behind}, None),
+    }
+    for name, (gaps_by_window, expected_month) in cases.items():
+        shelf_life = shelf_life_months(
+            decay_rows(gaps_by_window), window_months=3
+        ).iloc[0]
+        if expected_month is None:
+            assert np.isnan(shelf_life), name
+        else:
+            assert shelf_life == expected_month, name
 
 
 def test_separable_pairs_keeps_a_clear_leader_apart_and_ties_together() -> None:

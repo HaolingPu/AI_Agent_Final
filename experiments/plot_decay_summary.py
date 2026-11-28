@@ -13,8 +13,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from subset_eval.methods import SELECTION_METHODS
-
 # note (Wilson Zheng): the first four categorical slots, in their fixed, colour-blind-validated order; one marker per cutoff as well.
 CUTOFF_STYLES = (
     ("#2a78d6", "o"),
@@ -29,9 +27,9 @@ GRID_COLOR = "#e8e7e3"
 def mean_gap_by_window(decay_csv: Path) -> pd.DataFrame:
     """Per window: the method- and size-averaged gap, and its 2.5 / 97.5 percentiles across repeats."""
     results = pd.read_csv(decay_csv)
-    stale_prone_methods = [method for method in SELECTION_METHODS if method != "random"]
+    # note (Haoling Pu): every method but plain random, the gp-IRT ones included; run_decay's shelf life is per (method, size), so its band is wider than this averaged one.
     per_repeat_gap = (
-        results[results["method"].isin(stale_prone_methods)]
+        results[results["method"] != "random"]
         .groupby(["window_start_month", "repeat"])["kendall_tau_gap"]
         .mean()
         .unstack()
