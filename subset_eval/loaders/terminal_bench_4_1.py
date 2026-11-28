@@ -18,16 +18,20 @@ DATA_DIR = Path("terminal_bench_4_1")
 NUM_TASKS = 66
 NUM_TRIALS_PER_TASK = 5
 SCAFFOLD_ALIASES = {"mini-SWE-agent": "mini-swe-agent"}
+# note (Haoling Pu): the efforts the leaderboard uses, lowest first; "none" is a model run without a reasoning setting.
+REASONING_EFFORT_ORDER = ("none", "low", "medium", "high", "xhigh", "max")
 
 
 def load_terminal_bench_4_1(
-    raw_data_dir: Path, *, drop_regrade_errors: bool
+    raw_data_dir: Path, *, drop_regrade_errors: bool, highest_effort_only: bool
 ) -> BenchmarkData:
-    """Every leaderboard row, scored on the trials linked to it.
+    """Every leaderboard row (or one per model, see highest_effort_only), scored on the trials linked to it.
 
     A trial with no reward (an agent error, a timeout, a failed regrade, ...) counts as unresolved, as for Terminal-Bench 2.0 and the leaderboard.
     drop_regrade_errors (robustness check): a failed regrade is left out instead, a task's score is the mean over its graded trials,
     and the tasks where some row has no graded trial left are dropped (13 of 66 as fetched 2026-11-27), so every row is kept.
+    highest_effort_only: one row per (scaffold, model), the one at its highest reasoning effort (54 of 67 rows as fetched),
+    so a model run at five efforts does not crowd the top of the leaderboard (C3).
     """
     data_dir = raw_data_dir / DATA_DIR
     if not (data_dir / "rows.json").exists():
@@ -37,9 +41,38 @@ def load_terminal_bench_4_1(
     else:
         pass
 
+    rows = json.loads((data_dir / "rows.json").read_text())
+    if highest_effort_only:
+        row_table = pd.DataFrame(
+            {
+                "scaffold": [
+                    SCAFFOLD_ALIASES.get(label, label)
+                    for label in (
+                        row["metadata"]["agent_display"]["label"] for row in rows
+                    )
+                ],
+                "model": [row["metadata"]["model_display"]["label"] for row in rows],
+                "effort_rank": [
+                    REASONING_EFFORT_ORDER.index(row["metadata"]["reasoning_effort"])
+                    for row in rows
+                ],
+            }
+        )
+        if row_table.duplicated().any():
+            raise ValueError(
+                "terminal_bench_4_1: two rows share a scaffold, model and effort, so the highest effort is not one row"
+            )
+        else:
+            is_highest = row_table["effort_rank"] == row_table.groupby(
+                ["scaffold", "model"]
+            )["effort_rank"].transform("max")
+            rows = [row for row, keep in zip(rows, is_highest) if keep]
+    else:
+        pass
+
     agent_rows = []
     run_tables = []
-    for row in json.loads((data_dir / "rows.json").read_text()):
+    for row in rows:
         metadata = row["metadata"]
         # note (Haoling Pu): several rows run one model at different reasoning efforts, so the effort is part of the id.
         agent_id = f"{metadata['agent_display']['label']}__{metadata['model_display']['label']}__{metadata['reasoning_effort']}"
@@ -135,9 +168,9 @@ def load_terminal_bench_4_1(
         )
     )
     return BenchmarkData(
-        name="terminal_bench_4_1_graded_only"
-        if drop_regrade_errors
-        else "terminal_bench_4_1",
+        name="terminal_bench_4_1"
+        + ("_graded_only" if drop_regrade_errors else "")
+        + ("_highest_effort" if highest_effort_only else ""),
         agents=agents,
         # note (Haoling Pu): the trial listing carries no task category.
         tasks=pd.DataFrame({"task_id": task_ids, "category": "terminal-bench"}),

@@ -18,6 +18,7 @@ BenchmarkName = Literal[
     "terminal_bench",
     "terminal_bench_4_1",
     "terminal_bench_4_1_graded_only",
+    "terminal_bench_4_1_highest_effort",
     "swe_bench_verified",
     "swe_bench_verified_mini_swe_agent",
 ]
@@ -32,9 +33,17 @@ def load_benchmark(
     elif benchmark_name == "terminal_bench":
         return load_terminal_bench(raw_data_dir)
     elif benchmark_name == "terminal_bench_4_1":
-        return load_terminal_bench_4_1(raw_data_dir, drop_regrade_errors=False)
+        return load_terminal_bench_4_1(
+            raw_data_dir, drop_regrade_errors=False, highest_effort_only=False
+        )
     elif benchmark_name == "terminal_bench_4_1_graded_only":
-        return load_terminal_bench_4_1(raw_data_dir, drop_regrade_errors=True)
+        return load_terminal_bench_4_1(
+            raw_data_dir, drop_regrade_errors=True, highest_effort_only=False
+        )
+    elif benchmark_name == "terminal_bench_4_1_highest_effort":
+        return load_terminal_bench_4_1(
+            raw_data_dir, drop_regrade_errors=False, highest_effort_only=True
+        )
     elif benchmark_name == "swe_bench_verified":
         return load_swe_bench_verified(raw_data_dir)
     elif benchmark_name == "swe_bench_verified_mini_swe_agent":

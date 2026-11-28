@@ -85,7 +85,9 @@ def test_loader_rules_on_fake_rows(
         leaderboard_successes={"r1": 3},
     )
 
-    benchmark = load_terminal_bench_4_1(tmp_path, drop_regrade_errors=False)
+    benchmark = load_terminal_bench_4_1(
+        tmp_path, drop_regrade_errors=False, highest_effort_only=False
+    )
 
     assert benchmark.agents["agent_id"].tolist() == ["Agent__Model r1__max"]
     agent = benchmark.agents.iloc[0]
@@ -119,7 +121,9 @@ def test_loader_rejects_a_row_missing_a_trial(
     )
 
     with pytest.raises(ValueError, match="trials on each"):
-        load_terminal_bench_4_1(tmp_path, drop_regrade_errors=drop_regrade_errors)
+        load_terminal_bench_4_1(
+            tmp_path, drop_regrade_errors=drop_regrade_errors, highest_effort_only=False
+        )
 
 
 def test_graded_only_drops_failed_regrades_and_tasks_left_without_a_graded_trial(
@@ -147,16 +151,51 @@ def test_graded_only_drops_failed_regrades_and_tasks_left_without_a_graded_trial
     )
 
     as_zero = outcome_matrix(
-        load_terminal_bench_4_1(tmp_path, drop_regrade_errors=False)
+        load_terminal_bench_4_1(
+            tmp_path, drop_regrade_errors=False, highest_effort_only=False
+        )
     )
     graded_only = outcome_matrix(
-        load_terminal_bench_4_1(tmp_path, drop_regrade_errors=True)
+        load_terminal_bench_4_1(
+            tmp_path, drop_regrade_errors=True, highest_effort_only=False
+        )
     )
 
     assert as_zero.loc["Agent__Model r1__max", "task-a"] == 0.5
     assert as_zero.columns.tolist() == ["task-a", "task-b"]
     assert graded_only.loc["Agent__Model r1__max", "task-a"] == 1.0
     assert graded_only.columns.tolist() == ["task-a"]
+
+
+def test_highest_effort_merges_scaffold_spellings_and_keeps_the_top_effort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(terminal_bench_4_1, "NUM_TASKS", 1)
+    monkeypatch.setattr(terminal_bench_4_1, "NUM_TRIALS_PER_TASK", 1)
+    write_rows(
+        tmp_path,
+        {
+            "r1": [("task-a", "1.000", "2026-11-03 23:50", "$1")],
+            "r2": [("task-a", "0.000", "2026-11-03 23:50", "$1")],
+        },
+        leaderboard_successes={"r1": 1, "r2": 0},
+    )
+    # note (Haoling Pu): one model under both spellings of mini-SWE-agent, at two efforts.
+    rows_path = tmp_path / DATA_DIR / "rows.json"
+    rows = json.loads(rows_path.read_text())
+    for row, scaffold, effort in zip(
+        rows, ("mini-SWE-agent", "mini-swe-agent"), ("high", "max")
+    ):
+        row["metadata"]["agent_display"]["label"] = scaffold
+        row["metadata"]["model_display"]["label"] = "Model M"
+        row["metadata"]["reasoning_effort"] = effort
+    rows_path.write_text(json.dumps(rows))
+
+    agents = load_terminal_bench_4_1(
+        tmp_path, drop_regrade_errors=False, highest_effort_only=True
+    ).agents
+
+    assert agents["agent_id"].tolist() == ["mini-swe-agent__Model M__max"]
 
 
 @pytest.fixture(scope="module")
@@ -188,3 +227,18 @@ def test_real_data_graded_only_keeps_every_row() -> None:
     )
     # note (Haoling Pu): 31 (row, task) pairs have all 5 trials failed at regrade, on 13 tasks.
     assert outcomes.shape == (67, 53)
+
+
+@pytest.mark.skipif(
+    not HAS_RAW_DATA, reason="Terminal-Bench 4.1 not downloaded to data/raw/"
+)
+def test_real_data_highest_effort_keeps_one_row_per_scaffold_and_model() -> None:
+    agents = load_benchmark(
+        "terminal_bench_4_1_highest_effort", raw_data_dir=RAW_DATA_DIR, seed=0
+    ).agents
+    assert len(agents) == 54
+    assert not agents.duplicated(["scaffold", "model"]).any()
+    # note (Haoling Pu): four models were run at several efforts; GLM-5.3-Flash at "none" and "max".
+    effort_by_model = agents.set_index("model")["reasoning_effort"]
+    for model in ("Fable 5.1", "GPT-6 Astra", "Opus 5", "GLM-5.3-Flash"):
+        assert effort_by_model[model] == "max"
