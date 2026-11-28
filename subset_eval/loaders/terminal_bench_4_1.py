@@ -20,10 +20,14 @@ NUM_TRIALS_PER_TASK = 5
 SCAFFOLD_ALIASES = {"mini-SWE-agent": "mini-swe-agent"}
 
 
-def load_terminal_bench_4_1(raw_data_dir: Path) -> BenchmarkData:
+def load_terminal_bench_4_1(
+    raw_data_dir: Path, *, drop_regrade_errors: bool
+) -> BenchmarkData:
     """Every leaderboard row, scored on the trials linked to it.
 
-    A trial with no reward (an agent error, a timeout, a failed regrade, ...) counts as unresolved, as for Terminal-Bench 2.0.
+    A trial with no reward (an agent error, a timeout, a failed regrade, ...) counts as unresolved, as for Terminal-Bench 2.0 and the leaderboard.
+    drop_regrade_errors (robustness check): a failed regrade is left out instead, a task's score is the mean over its graded trials,
+    and the tasks where some row has no graded trial left are dropped (13 of 66 as fetched 2026-11-27), so every row is kept.
     """
     data_dir = raw_data_dir / DATA_DIR
     if not (data_dir / "rows.json").exists():
@@ -76,6 +80,7 @@ def load_terminal_bench_4_1(raw_data_dir: Path) -> BenchmarkData:
                 "submit_date": pd.Timestamp(metadata["date"]),
                 "model_release_date": pd.Timestamp(metadata["date"]),
                 "reasoning_effort": metadata["reasoning_effort"],
+                # note (Haoling Pu): the per-row stats describe all linked trials, also in the graded-only variant.
                 "missing_reward_share": (trials["Reward"] == "").mean(),
                 # note (Haoling Pu): a failed regrade is a grading failure on the Hub, not the agent's, but it still counts as unresolved (up to 76 of 330 trials in a row).
                 "regrade_error_share": (trials["Error"] == "RegradeError").mean(),
@@ -102,6 +107,22 @@ def load_terminal_bench_4_1(raw_data_dir: Path) -> BenchmarkData:
         )
     else:
         pass
+    if drop_regrade_errors:
+        runs = runs[runs["Error"] != "RegradeError"]
+        graded_trials = (
+            runs.groupby(["agent_id", "task_id"]).size().unstack(fill_value=0)
+        )
+        task_ids = graded_trials.columns[(graded_trials > 0).all()].tolist()
+        runs = runs[runs["task_id"].isin(task_ids)]
+        kept_graded_trials = graded_trials[task_ids]
+        # note (Haoling Pu): a cell with fewer graded trials is a noisier mean, yet IRT weighs every cell alike.
+        logger.info(
+            f"terminal_bench_4_1: dropped the failed regrades; {len(task_ids)} of {NUM_TASKS} tasks have a graded trial for every row; "
+            f"{int((kept_graded_trials < NUM_TRIALS_PER_TASK).sum().sum())} kept (row, task) cells rest on fewer than {NUM_TRIALS_PER_TASK} trials "
+            f"(fewest {int(kept_graded_trials.min().min())})"
+        )
+    else:
+        pass
     mismatched_agents = agents[agents["leaderboard_successes_minus_linked"] != 0]
     logger.info(
         f"terminal_bench_4_1: {len(agents)} rows; the leaderboard's success count differs from the linked trials for "
@@ -114,7 +135,9 @@ def load_terminal_bench_4_1(raw_data_dir: Path) -> BenchmarkData:
         )
     )
     return BenchmarkData(
-        name="terminal_bench_4_1",
+        name="terminal_bench_4_1_graded_only"
+        if drop_regrade_errors
+        else "terminal_bench_4_1",
         agents=agents,
         # note (Haoling Pu): the trial listing carries no task category.
         tasks=pd.DataFrame({"task_id": task_ids, "category": "terminal-bench"}),

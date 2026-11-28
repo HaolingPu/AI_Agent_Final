@@ -46,7 +46,7 @@ Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how 
 
 - The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3 (as the unsaturated contrast), X4 and X5.
 - Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required) or by hand.
-- **Terminal-Bench 4.1** (`--benchmark terminal_bench_4_1`): the open Harbor Hub leaderboard, 67 rows x 66 tasks x 5 trials, dated by model release (2026-02 to 2026-11), top row 71 %. Download with `scripts/fetch_terminal_bench_4_1.py` (free Harbor Hub account). Several rows are one model at different reasoning efforts.
+- **Terminal-Bench 4.1** (`--benchmark terminal_bench_4_1`): the open Harbor Hub leaderboard, 67 rows x 66 tasks x 5 trials, dated by model release (2026-02 to 2026-11), top row 71 %. Download with `scripts/fetch_terminal_bench_4_1.py` (free Harbor Hub account). Several rows are one model at different reasoning efforts. A trial whose regrade failed on the Hub (350 of 22,110, in 21 rows) counts as 0, as on the leaderboard; `--benchmark terminal_bench_4_1_graded_only` leaves those trials out and drops the 13 tasks some row then has no graded trial on (53 tasks left), as a robustness check.
 - Raw data is not committed (`data/raw/` is in `.gitignore`).
 
 ### Unified format (both benchmarks)
@@ -89,6 +89,7 @@ Date cutoffs (SWE-bench): 2024-12-31 main (12 months of follow-up); 2025-03-31, 
 | `subset_eval/methods.py` | one interface over every method: fit the selection group once, pick weighted subsets, estimate test scores |
 | `experiments/run_core_loop.py` | every method x split (random / date / weak-to-strong) x size -> `results/<benchmark>_core_loop.csv` (C1, X5) |
 | `experiments/run_decay.py` | subsets frozen at a cutoff vs. refreshed before each later window, scored on the same window's agents; shelf life = first of two windows in a row where the whole 95 % band of the gap (over repeats) is below 0 -> `results/<benchmark>_decay.csv` (C2) |
+| `experiments/plot_decay_summary.py`, `experiments/plot_decay_by_age.py` | C2 figures from the per-cutoff decay CSVs: the gap per window for each cutoff; and the same test window scored by frozen subsets of different ages (test agents and refreshed subset fixed) -> `figures/c2/` |
 | `experiments/run_saturation.py` | per month, for all agents so far and for the last 6 months only: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/<benchmark>_saturation.csv` (C3) |
 | `experiments/reproduce_tiny_benchmarks.py` | tinyBenchmarks' own Open LLM Leaderboard MMLU matrix -> every method's estimation error and Spearman at 100 questions, next to the paper's numbers -> `results/tiny_benchmarks_reproduction.csv` (checks our implementation) |
 

@@ -11,6 +11,7 @@ from subset_eval.loaders.terminal_bench_4_1 import DATA_DIR, load_terminal_bench
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 HAS_RAW_DATA = (RAW_DATA_DIR / DATA_DIR / "rows.json").is_file()
+ERROR_BY_REWARD = {"": "AgentTimeoutError", "regrade": "RegradeError"}
 
 
 def write_rows(
@@ -19,7 +20,7 @@ def write_rows(
     *,
     leaderboard_successes: dict[str, int],
 ) -> None:
-    """trials_by_row: row id -> (task, reward or "" when none, started, cost) per linked trial."""
+    """trials_by_row: row id -> (task, reward ("" when none, "regrade" for a failed regrade), started, cost) per linked trial."""
     data_dir = raw_data_dir / DATA_DIR
     (data_dir / "trials").mkdir(parents=True)
     rows = []
@@ -51,8 +52,8 @@ def write_rows(
                         {
                             "ID": f"{row_id}-{index}",
                             "Task": f"terminal-bench/{task}",
-                            "Reward": reward,
-                            "Error": "" if reward else "AgentTimeoutError",
+                            "Reward": "" if reward == "regrade" else reward,
+                            "Error": ERROR_BY_REWARD.get(reward, ""),
                             "Started": started,
                             "Cost": cost,
                         }
@@ -84,7 +85,7 @@ def test_loader_rules_on_fake_rows(
         leaderboard_successes={"r1": 3},
     )
 
-    benchmark = load_terminal_bench_4_1(tmp_path)
+    benchmark = load_terminal_bench_4_1(tmp_path, drop_regrade_errors=False)
 
     assert benchmark.agents["agent_id"].tolist() == ["Agent__Model r1__max"]
     agent = benchmark.agents.iloc[0]
@@ -99,8 +100,9 @@ def test_loader_rules_on_fake_rows(
     assert runs.loc[("task-b", 2), "cost_usd"] == pytest.approx(120.5)
 
 
+@pytest.mark.parametrize("drop_regrade_errors", [False, True])
 def test_loader_rejects_a_row_missing_a_trial(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drop_regrade_errors: bool
 ) -> None:
     monkeypatch.setattr(terminal_bench_4_1, "NUM_TASKS", 2)
     monkeypatch.setattr(terminal_bench_4_1, "NUM_TRIALS_PER_TASK", 2)
@@ -117,7 +119,44 @@ def test_loader_rejects_a_row_missing_a_trial(
     )
 
     with pytest.raises(ValueError, match="trials on each"):
-        load_terminal_bench_4_1(tmp_path)
+        load_terminal_bench_4_1(tmp_path, drop_regrade_errors=drop_regrade_errors)
+
+
+def test_graded_only_drops_failed_regrades_and_tasks_left_without_a_graded_trial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(terminal_bench_4_1, "NUM_TASKS", 2)
+    monkeypatch.setattr(terminal_bench_4_1, "NUM_TRIALS_PER_TASK", 2)
+    write_rows(
+        tmp_path,
+        {
+            "r1": [
+                ("task-a", "1.000", "2026-11-03 23:50", "$1"),
+                ("task-a", "regrade", "2026-11-03 23:51", "$1"),
+                ("task-b", "0.000", "2026-11-03 23:52", "$1"),
+                ("task-b", "1.000", "2026-11-03 23:53", "$1"),
+            ],
+            "r2": [
+                ("task-a", "1.000", "2026-11-03 23:50", "$1"),
+                ("task-a", "1.000", "2026-11-03 23:51", "$1"),
+                ("task-b", "regrade", "2026-11-03 23:52", "$1"),
+                ("task-b", "regrade", "2026-11-03 23:53", "$1"),
+            ],
+        },
+        leaderboard_successes={"r1": 2, "r2": 2},
+    )
+
+    as_zero = outcome_matrix(
+        load_terminal_bench_4_1(tmp_path, drop_regrade_errors=False)
+    )
+    graded_only = outcome_matrix(
+        load_terminal_bench_4_1(tmp_path, drop_regrade_errors=True)
+    )
+
+    assert as_zero.loc["Agent__Model r1__max", "task-a"] == 0.5
+    assert as_zero.columns.tolist() == ["task-a", "task-b"]
+    assert graded_only.loc["Agent__Model r1__max", "task-a"] == 1.0
+    assert graded_only.columns.tolist() == ["task-a"]
 
 
 @pytest.fixture(scope="module")
@@ -136,3 +175,16 @@ def test_real_data_shape_and_scores(terminal_bench_4_1_data: BenchmarkData) -> N
     agents = terminal_bench_4_1_data.agents
     assert agents["leaderboard_successes_minus_linked"].abs().max() <= 9
     assert agents["submit_date"].min() >= pd.Timestamp("2026-02-01")
+
+
+@pytest.mark.skipif(
+    not HAS_RAW_DATA, reason="Terminal-Bench 4.1 not downloaded to data/raw/"
+)
+def test_real_data_graded_only_keeps_every_row() -> None:
+    outcomes = outcome_matrix(
+        load_benchmark(
+            "terminal_bench_4_1_graded_only", raw_data_dir=RAW_DATA_DIR, seed=0
+        )
+    )
+    # note (Haoling Pu): 31 (row, task) pairs have all 5 trials failed at regrade, on 13 tasks.
+    assert outcomes.shape == (67, 53)
