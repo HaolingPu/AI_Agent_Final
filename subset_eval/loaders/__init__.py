@@ -5,6 +5,7 @@ from typing import Literal
 
 from subset_eval.data import BenchmarkData
 from subset_eval.loaders.metr import load_metr
+from subset_eval.loaders.multi_swe_bench import load_multi_swe_bench
 from subset_eval.loaders.swe_bench_verified import (
     load_swe_bench,
     load_swe_bench_verified_mini_swe_agent,
@@ -27,6 +28,7 @@ BenchmarkName = Literal[
     "swe_bench_verified_one_per_model",
     "metr_1_0",
     "metr_1_1",
+    "multi_swe_bench",
 ]
 
 
@@ -62,5 +64,7 @@ def load_benchmark(
         return load_metr(raw_data_dir, report="time-horizon-1-0")
     elif benchmark_name == "metr_1_1":
         return load_metr(raw_data_dir, report="time-horizon-1-1")
+    elif benchmark_name == "multi_swe_bench":
+        return load_multi_swe_bench(raw_data_dir)
     else:
         raise ValueError(f"unknown benchmark {benchmark_name}")
