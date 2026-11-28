@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from subset_eval.data import BenchmarkData
+from subset_eval.loaders.metr import load_metr
 from subset_eval.loaders.swe_bench_verified import (
     load_swe_bench,
     load_swe_bench_verified_mini_swe_agent,
@@ -24,6 +25,8 @@ BenchmarkName = Literal[
     "swe_bench_lite",
     "swe_bench_verified_mini_swe_agent",
     "swe_bench_verified_one_per_model",
+    "metr_1_0",
+    "metr_1_1",
 ]
 
 
@@ -55,5 +58,9 @@ def load_benchmark(
         return load_swe_bench_verified_mini_swe_agent(raw_data_dir)
     elif benchmark_name == "swe_bench_verified_one_per_model":
         return load_swe_bench_verified_one_per_model(raw_data_dir)
+    elif benchmark_name == "metr_1_0":
+        return load_metr(raw_data_dir, report="time-horizon-1-0")
+    elif benchmark_name == "metr_1_1":
+        return load_metr(raw_data_dir, report="time-horizon-1-1")
     else:
         raise ValueError(f"unknown benchmark {benchmark_name}")
