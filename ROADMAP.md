@@ -46,6 +46,7 @@ Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how 
 
 - The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3 (as the unsaturated contrast), X4 and X5.
 - Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required) or by hand.
+- **Terminal-Bench 4.1** (`--benchmark terminal_bench_4_1`): the open Harbor Hub leaderboard, 67 rows x 66 tasks x 5 trials, dated by model release (2026-02 to 2026-11), top row 71 %. Download with `scripts/fetch_terminal_bench_4_1.py` (free Harbor Hub account). Several rows are one model at different reasoning efforts.
 - Raw data is not committed (`data/raw/` is in `.gitignore`).
 
 ### Unified format (both benchmarks)
