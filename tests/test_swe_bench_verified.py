@@ -1,17 +1,18 @@
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from subset_eval.data import BenchmarkData, outcome_matrix
 from subset_eval.loaders import load_benchmark
-from subset_eval.loaders.swe_bench_verified import SUBMISSIONS_DIR
+from subset_eval.loaders.swe_bench_verified import SUBMISSIONS_ROOT
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
 NUM_ONE_PER_MODEL_AGENTS = 110
 
 # note (Wilson Zheng): the raw files are gitignored, so these tests run only after the download in swe_bench_verified.py.
 pytestmark = pytest.mark.skipif(
-    not (RAW_DATA_DIR / SUBMISSIONS_DIR).is_dir(),
+    not (RAW_DATA_DIR / SUBMISSIONS_ROOT / "verified").is_dir(),
     reason="SWE-bench experiments not downloaded to data/raw/",
 )
 
@@ -129,3 +130,19 @@ def test_one_per_model_variant_keeps_the_best_submission_of_each_model(
     assert kept_models.isin(["gpt-4o-2024-08-06"]).sum() == 1
     # note (Haoling Pu): submissions with an undisclosed model are all kept.
     assert kept_models.isna().sum() == 24
+
+
+@pytest.mark.skipif(
+    not (RAW_DATA_DIR / SUBMISSIONS_ROOT / "lite").is_dir(),
+    reason="SWE-bench Lite experiments not in the sparse checkout",
+)
+def test_lite_split_matches_leaderboard_solve_rates() -> None:
+    lite = load_benchmark("swe_bench_lite", raw_data_dir=RAW_DATA_DIR, seed=0)
+    solve_rate = outcome_matrix(lite).mean(axis=1)
+    assert solve_rate.shape == (84,)
+    assert lite.tasks.shape[0] == 300
+    assert lite.agents["submit_date"].min() == pd.Timestamp("2023-10-10")
+    # note (Haoling Pu): 20240811_gru's results.json names only 107 tasks; the rest count as unresolved, as on the leaderboard (resolved / 300).
+    assert solve_rate["20240811_gru"] == pytest.approx(107 / 300)
+    assert solve_rate["20231010_rag_claude2"] == pytest.approx(9 / 300)
+    assert solve_rate["20240620_sweagent_claude3.5sonnet"] == pytest.approx(69 / 300)

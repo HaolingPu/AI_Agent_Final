@@ -5,7 +5,7 @@ from typing import Literal
 
 from subset_eval.data import BenchmarkData
 from subset_eval.loaders.swe_bench_verified import (
-    load_swe_bench_verified,
+    load_swe_bench,
     load_swe_bench_verified_mini_swe_agent,
     load_swe_bench_verified_one_per_model,
 )
@@ -21,6 +21,7 @@ BenchmarkName = Literal[
     "terminal_bench_4_1_graded_only",
     "terminal_bench_4_1_highest_effort",
     "swe_bench_verified",
+    "swe_bench_lite",
     "swe_bench_verified_mini_swe_agent",
     "swe_bench_verified_one_per_model",
 ]
@@ -47,7 +48,9 @@ def load_benchmark(
             raw_data_dir, drop_regrade_errors=False, highest_effort_only=True
         )
     elif benchmark_name == "swe_bench_verified":
-        return load_swe_bench_verified(raw_data_dir)
+        return load_swe_bench(raw_data_dir, split="verified")
+    elif benchmark_name == "swe_bench_lite":
+        return load_swe_bench(raw_data_dir, split="lite")
     elif benchmark_name == "swe_bench_verified_mini_swe_agent":
         return load_swe_bench_verified_mini_swe_agent(raw_data_dir)
     elif benchmark_name == "swe_bench_verified_one_per_model":

@@ -4,10 +4,7 @@ from pathlib import Path
 import pytest
 
 from subset_eval.loaders import swe_bench_verified
-from subset_eval.loaders.swe_bench_verified import (
-    SUBMISSIONS_DIR,
-    load_swe_bench_verified,
-)
+from subset_eval.loaders.swe_bench_verified import SUBMISSIONS_ROOT, load_swe_bench
 
 TASK_IDS = ["django__django-1", "django__django-2", "sympy__sympy-3", "sympy__sympy-4"]
 
@@ -19,10 +16,11 @@ def write_submission(
     reported_solve_rate: float | None,
     resolved_task_ids: list[str] | None = None,
     resolved_by_detailed_task_id: dict[str, bool] | None = None,
+    no_generation_task_ids: tuple[str, ...] = (),
     metadata_file_name: str = "metadata.yaml",
 ) -> None:
     """A submission folder with results.json (resolved ids) and/or per_instance_details.json (every task it ran)."""
-    submission_dir = raw_data_dir / SUBMISSIONS_DIR / name
+    submission_dir = raw_data_dir / SUBMISSIONS_ROOT / "verified" / name
     submission_dir.mkdir(parents=True)
     (submission_dir / metadata_file_name).write_text(
         # note (Haoling Pu): most real submissions report no solve rate at all.
@@ -43,7 +41,12 @@ def write_submission(
     else:
         (submission_dir / "results").mkdir()
         (submission_dir / "results" / "results.json").write_text(
-            json.dumps({"resolved": resolved_task_ids})
+            json.dumps(
+                {
+                    "resolved": resolved_task_ids,
+                    "no_generation": list(no_generation_task_ids),
+                }
+            )
         )
     if resolved_by_detailed_task_id is None:
         pass
@@ -61,7 +64,9 @@ def write_submission(
 def test_loader_rules_on_fake_submissions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(swe_bench_verified, "NUM_TASKS", len(TASK_IDS))
+    monkeypatch.setitem(
+        swe_bench_verified.NUM_TASKS_BY_SPLIT, "verified", len(TASK_IDS)
+    )
     # note (Haoling Pu): names every task, so the task set is known; 2 of 4 resolved = 50 %.
     write_submission(
         tmp_path,
@@ -100,7 +105,7 @@ def test_loader_rules_on_fake_submissions(
         resolved_by_detailed_task_id={"django__django-1": False},
     )
 
-    benchmark = load_swe_bench_verified(tmp_path)
+    benchmark = load_swe_bench(tmp_path, split="verified")
 
     assert benchmark.agents["agent_id"].tolist() == [
         "20250101_details_only",
@@ -124,7 +129,9 @@ def test_loader_rules_on_fake_submissions(
 def test_a_resolved_id_outside_the_task_set_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(swe_bench_verified, "NUM_TASKS", len(TASK_IDS))
+    monkeypatch.setitem(
+        swe_bench_verified.NUM_TASKS_BY_SPLIT, "verified", len(TASK_IDS)
+    )
     write_submission(
         tmp_path,
         "20250101_details_only",
@@ -139,4 +146,38 @@ def test_a_resolved_id_outside_the_task_set_raises(
     )
 
     with pytest.raises(ValueError, match="expected 4 task ids, found 5"):
-        load_swe_bench_verified(tmp_path)
+        load_swe_bench(tmp_path, split="verified")
+
+
+def test_a_task_named_only_in_an_unresolved_list_joins_the_task_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(
+        swe_bench_verified.NUM_TASKS_BY_SPLIT, "verified", len(TASK_IDS)
+    )
+    # note (Haoling Pu): like most Lite submissions, neither file names every task; sympy__sympy-4 appears only under no_generation.
+    write_submission(
+        tmp_path,
+        "20250101_short_results",
+        reported_solve_rate=None,
+        resolved_task_ids=["django__django-1", "django__django-2"],
+    )
+    write_submission(
+        tmp_path,
+        "20250201_short_results",
+        reported_solve_rate=None,
+        resolved_task_ids=["sympy__sympy-3"],
+        no_generation_task_ids=("sympy__sympy-4",),
+    )
+
+    benchmark = load_swe_bench(tmp_path, split="verified")
+
+    assert sorted(benchmark.tasks["task_id"]) == TASK_IDS
+    resolved = benchmark.runs.set_index(["agent_id", "task_id"])["resolved"]
+    assert resolved["20250101_short_results"].to_dict() == {
+        "django__django-1": 1,
+        "django__django-2": 1,
+        "sympy__sympy-3": 0,
+        "sympy__sympy-4": 0,
+    }
+    assert resolved["20250201_short_results", "sympy__sympy-4"] == 0

@@ -1,11 +1,13 @@
-"""SWE-bench Verified loader: one submission folder of github.com/SWE-bench/experiments per agent, one trial per task.
+"""SWE-bench Verified and Lite loader: one submission folder of github.com/SWE-bench/experiments per agent, one trial per task.
 
-Download only the files the loader reads (about 5 MB instead of the full repo's logs):
+Download only the files the loader reads (about 6 MB instead of the full repo's logs):
 
     git clone --filter=blob:none --no-checkout --depth 1 https://github.com/SWE-bench/experiments.git data/raw/swe_bench_experiments
     cd data/raw/swe_bench_experiments
     git sparse-checkout set --no-cone '/evaluation/verified/*/metadata.yaml' '/evaluation/verified/*/metadata.yml' \
-        '/evaluation/verified/*/results/results.json' '/evaluation/verified/*/per_instance_details.json'
+        '/evaluation/verified/*/results/results.json' '/evaluation/verified/*/per_instance_details.json' \
+        '/evaluation/lite/*/metadata.yaml' '/evaluation/lite/*/metadata.yml' \
+        '/evaluation/lite/*/results/results.json' '/evaluation/lite/*/per_instance_details.json'
     git checkout
 """
 
@@ -14,6 +16,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -23,8 +26,9 @@ from subset_eval.data import BenchmarkData
 
 logger = logging.getLogger(__name__)
 
-SUBMISSIONS_DIR = Path("swe_bench_experiments/evaluation/verified")
-NUM_TASKS = 500
+SUBMISSIONS_ROOT = Path("swe_bench_experiments/evaluation")
+SweBenchSplit = Literal["verified", "lite"]
+NUM_TASKS_BY_SPLIT: dict[SweBenchSplit, int] = {"verified": 500, "lite": 300}
 # note (Wilson Zheng): two mini-SWE-agent submissions flag far fewer tasks as resolved than their metadata reports (10.2 % vs 52.8 %, 0 % vs 69.6 %); a gap this large means broken per-task data, so they are left out.
 MAX_REPORTED_SOLVE_RATE_GAP = 1.0
 # note (Haoling Pu): lower-cased model names that name a dated model without its date or in another style; checked by hand on the 2026-11 data.
@@ -43,12 +47,14 @@ MODEL_ALIASES = {
 @dataclass(kw_only=True)
 class SubmissionResults:
     resolved_task_ids: set[str]
-    # note (Wilson Zheng): only per_instance_details.json (mini-SWE-agent) names every task and its cost; results.json lists the resolved ones.
-    detailed_task_ids: set[str]
+    # note (Haoling Pu): every task id the files name: per_instance_details.json (mini-SWE-agent) names every task it ran; a results.json names only the tasks in its lists (all of them in some files, only resolved / no_generation / no_logs in most Lite ones).
+    listed_task_ids: set[str]
     cost_by_task_id: dict[str, float]
 
 
-def read_submission_results(submission_dir: Path) -> SubmissionResults | None:
+def read_submission_results(
+    submission_dir: Path, *, num_tasks: int
+) -> SubmissionResults | None:
     """Per-task results of one submission, or None when it has no per-task file or its file misses tasks."""
     results_path = submission_dir / "results" / "results.json"
     details_path = submission_dir / "per_instance_details.json"
@@ -64,16 +70,19 @@ def read_submission_results(submission_dir: Path) -> SubmissionResults | None:
         cost_by_task_id = {}
     # note (Wilson Zheng): one submission has both files and they agree on every task, but its details miss 59 tasks, so results.json wins.
     if results_path.exists():
-        resolved_task_ids = set(json.loads(results_path.read_text())["resolved"])
-    elif len(details) == NUM_TASKS:
+        results = json.loads(results_path.read_text())
+        resolved_task_ids = set(results["resolved"])
+        listed_task_ids = set(details).union(*results.values())
+    elif len(details) == num_tasks:
         resolved_task_ids = {
             task_id for task_id, detail in details.items() if detail["resolved"]
         }
+        listed_task_ids = set(details)
     else:
         return None
     return SubmissionResults(
         resolved_task_ids=resolved_task_ids,
-        detailed_task_ids=set(details),
+        listed_task_ids=listed_task_ids,
         cost_by_task_id=cost_by_task_id,
     )
 
@@ -107,9 +116,11 @@ def agent_row(submission_dir: Path, metadata: dict[str, dict]) -> dict:
     }
 
 
-def load_swe_bench_verified(raw_data_dir: Path) -> BenchmarkData:
-    """Every submission with complete per-task results; unresolved tasks are rows with resolved = 0."""
-    submissions_dir = raw_data_dir / SUBMISSIONS_DIR
+def load_swe_bench(raw_data_dir: Path, *, split: SweBenchSplit) -> BenchmarkData:
+    """Every submission of the split with complete per-task results; unresolved tasks are rows with resolved = 0."""
+    num_tasks = NUM_TASKS_BY_SPLIT[split]
+    benchmark_name = f"swe_bench_{split}"
+    submissions_dir = raw_data_dir / SUBMISSIONS_ROOT / split
     if not submissions_dir.is_dir():
         raise FileNotFoundError(
             f"{submissions_dir} not found; see the download steps in {__file__}"
@@ -123,7 +134,9 @@ def load_swe_bench_verified(raw_data_dir: Path) -> BenchmarkData:
     results_by_agent_id = {}
     left_out = []
     for submission_dir in submission_dirs:
-        submission_results = read_submission_results(submission_dir)
+        submission_results = read_submission_results(
+            submission_dir, num_tasks=num_tasks
+        )
         # note (Haoling Pu): a few submissions name the file metadata.yml.
         metadata_path = submission_dir / "metadata.yaml"
         if metadata_path.exists():
@@ -136,9 +149,9 @@ def load_swe_bench_verified(raw_data_dir: Path) -> BenchmarkData:
             continue
         else:
             per_task_solve_rate = (
-                100 * len(submission_results.resolved_task_ids) / NUM_TASKS
+                100 * len(submission_results.resolved_task_ids) / num_tasks
             )
-        # note (Haoling Pu): only 48 of 182 submissions report a solve rate, so only those can be checked against it.
+        # note (Haoling Pu): only 48 of 182 Verified submissions report a solve rate, and no Lite one does, so only those 48 can be checked against it.
         if (
             reported_solve_rate is not None
             and abs(per_task_solve_rate - float(reported_solve_rate))
@@ -151,23 +164,23 @@ def load_swe_bench_verified(raw_data_dir: Path) -> BenchmarkData:
             agent_rows.append(agent_row(submission_dir, metadata))
             results_by_agent_id[submission_dir.name] = submission_results
     logger.info(
-        f"swe_bench_verified: {len(agent_rows)} of {len(submission_dirs)} submissions kept; left out {len(left_out)}: "
+        f"{benchmark_name}: {len(agent_rows)} of {len(submission_dirs)} submissions kept; left out {len(left_out)}: "
         + "; ".join(left_out)
     )
 
-    # note (Wilson Zheng): no file lists the 500 tasks on its own; the mini-SWE-agent details name all of them, and every resolved list must fall inside.
+    # note (Haoling Pu): no file lists the tasks on its own; the files together name all of them, and a task a submission does not name counts as unresolved for it.
     task_ids = sorted(
         set().union(
             *(
-                submission_results.detailed_task_ids
+                submission_results.listed_task_ids
                 | submission_results.resolved_task_ids
                 for submission_results in results_by_agent_id.values()
             )
         )
     )
-    if len(task_ids) != NUM_TASKS:
+    if len(task_ids) != num_tasks:
         raise ValueError(
-            f"swe_bench_verified: expected {NUM_TASKS} task ids, found {len(task_ids)}"
+            f"{benchmark_name}: expected {num_tasks} task ids, found {len(task_ids)}"
         )
     else:
         pass
@@ -199,7 +212,7 @@ def load_swe_bench_verified(raw_data_dir: Path) -> BenchmarkData:
     ]
     runs["total_tokens"] = np.nan
     return BenchmarkData(
-        name="swe_bench_verified",
+        name=benchmark_name,
         agents=pd.DataFrame(agent_rows),
         tasks=tasks,
         runs=runs,
@@ -211,7 +224,7 @@ def load_swe_bench_verified_mini_swe_agent(raw_data_dir: Path) -> BenchmarkData:
 
     mini-SWE-agent re-runs older models in batches (11 submissions on 2026-02-17 alone), so its submit date says little about when a model appeared.
     """
-    swe_bench = load_swe_bench_verified(raw_data_dir)
+    swe_bench = load_swe_bench(raw_data_dir, split="verified")
     is_mini_swe_agent = swe_bench.agents["scaffold"] == "mini-SWE-agent"
     agents = swe_bench.agents[is_mini_swe_agent].reset_index(drop=True)
     # note (Wilson Zheng): every mini-SWE-agent submission reports its model's release date; BenchmarkData rejects a missing one.
@@ -247,7 +260,7 @@ def load_swe_bench_verified_one_per_model(raw_data_dir: Path) -> BenchmarkData:
             part_keys.add(f"{'-'.join(words)}|{'-'.join(numbers)}")
         return " + ".join(sorted(part_keys))
 
-    swe_bench = load_swe_bench_verified(raw_data_dir)
+    swe_bench = load_swe_bench(raw_data_dir, split="verified")
     agents = swe_bench.agents.copy()
     solve_rate = swe_bench.runs.groupby("agent_id")["resolved"].mean()
     agents["solve_rate"] = agents["agent_id"].map(solve_rate)
