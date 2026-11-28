@@ -7,6 +7,7 @@ from subset_eval.loaders import load_benchmark
 from subset_eval.loaders.swe_bench_verified import SUBMISSIONS_DIR
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "raw"
+NUM_ONE_PER_MODEL_AGENTS = 110
 
 # note (Wilson Zheng): the raw files are gitignored, so these tests run only after the download in swe_bench_verified.py.
 pytestmark = pytest.mark.skipif(
@@ -88,3 +89,43 @@ def test_mini_swe_agent_variant_dates_agents_by_model_release() -> None:
         )
         == "2025-09-29"
     )
+
+
+def test_one_per_model_variant_keeps_the_best_submission_of_each_model(
+    swe_bench: BenchmarkData,
+) -> None:
+    one_per_model = load_benchmark(
+        "swe_bench_verified_one_per_model", raw_data_dir=RAW_DATA_DIR, seed=0
+    )
+    assert outcome_matrix(one_per_model).shape == (NUM_ONE_PER_MODEL_AGENTS, 500)
+    assert one_per_model.agents.columns.tolist() == swe_bench.agents.columns.tolist()
+    solve_rate = outcome_matrix(swe_bench).mean(axis=1)
+    kept_models = one_per_model.agents["model"]
+    # note (Haoling Pu): claude-3-5-sonnet-20241022 has 14 submissions (one lists it twice); the kept one solves the most.
+    sonnet_ids = swe_bench.agents.loc[
+        swe_bench.agents["model"].str.startswith("claude-3-5-sonnet-20241022", na=False)
+        & ~swe_bench.agents["model"].str.contains("gpt|o1", na=False),
+        "agent_id",
+    ]
+    assert len(sonnet_ids) == 14
+    assert one_per_model.agents["agent_id"].isin(sonnet_ids).sum() == 1
+    assert (
+        one_per_model.agents["agent_id"].isin([solve_rate[sonnet_ids].idxmax()]).any()
+    )
+    # note (Haoling Pu): spellings, prefixes, "+" order and aliases of one model are merged; dated snapshots stay apart.
+    for spellings in (
+        ["claude-4-sonnet-20250514", "claude-sonnet-4-20250514"],
+        ["gpt-5-2025-08-07", "openai/gpt-5-2025-08-07"],
+        ["claude-sonnet-4-20250514 + gpt-5", "gpt-5 + claude-sonnet-4-20250514"],
+        [
+            "claude-opus-4-5-20251101",
+            "claude-opus-4-5",
+            "Claude Opus 4.5",
+            "claude-4-5-opus",
+        ],
+    ):
+        assert kept_models.isin(spellings).sum() == 1, spellings
+    assert kept_models.isin(["gpt-4o-2024-05-13"]).sum() == 1
+    assert kept_models.isin(["gpt-4o-2024-08-06"]).sum() == 1
+    # note (Haoling Pu): submissions with an undisclosed model are all kept.
+    assert kept_models.isna().sum() == 24

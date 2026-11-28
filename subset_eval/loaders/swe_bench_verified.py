@@ -11,6 +11,7 @@ Download only the files the loader reads (about 5 MB instead of the full repo's 
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +27,17 @@ SUBMISSIONS_DIR = Path("swe_bench_experiments/evaluation/verified")
 NUM_TASKS = 500
 # note (Wilson Zheng): two mini-SWE-agent submissions flag far fewer tasks as resolved than their metadata reports (10.2 % vs 52.8 %, 0 % vs 69.6 %); a gap this large means broken per-task data, so they are left out.
 MAX_REPORTED_SOLVE_RATE_GAP = 1.0
+# note (Haoling Pu): lower-cased model names that name a dated model without its date or in another style; checked by hand on the 2026-11 data.
+MODEL_ALIASES = {
+    "claude 3.7 sonnet": "claude-3-7-sonnet-20250219",
+    "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
+    "claude opus 4.5": "claude-opus-4-5-20251101",
+    "claude-4-5-opus": "claude-opus-4-5-20251101",
+    "claude-opus-4-5": "claude-opus-4-5-20251101",
+    "gpt-5-2": "gpt-5.2-2025-12-11",
+    "gemini 2.0 flash (v20241212-experimental)": "gemini-2.0-flash-exp",
+    "o4-mini": "o4-mini-20250416",
+}
 
 
 @dataclass(kw_only=True)
@@ -209,4 +221,54 @@ def load_swe_bench_verified_mini_swe_agent(raw_data_dir: Path) -> BenchmarkData:
         agents=agents,
         tasks=swe_bench.tasks,
         runs=swe_bench.runs[swe_bench.runs["agent_id"].isin(agents["agent_id"])],
+    )
+
+
+def load_swe_bench_verified_one_per_model(raw_data_dir: Path) -> BenchmarkData:
+    """One submission per model: the best-scoring one (the earliest on a tie); a submission with an undisclosed model is kept as its own model.
+
+    Several scaffolds run the same model (claude-3-5-sonnet-20241022 has 14 submissions), so a random split puts near-twins in both groups.
+    Model names are matched after dropping a Hugging Face or provider prefix, lower-casing, and sorting the word parts (not the version numbers),
+    so claude-4-sonnet-20250514 and claude-sonnet-4-20250514 are one model but gpt-4.5 and gpt-5.4 would not be;
+    MODEL_ALIASES joins the remaining spellings of one model, and a "+" combination is matched as a set.
+    """
+
+    def _model_key(model: str) -> str:
+        part_keys = set()
+        for part in model.split("+"):
+            name = part.strip().lower().rsplit("/", 1)[-1]
+            tokens = [
+                token
+                for token in re.split(r"[-_ .()]+", MODEL_ALIASES.get(name, name))
+                if token
+            ]
+            words = sorted(token for token in tokens if not token.isdigit())
+            numbers = [token for token in tokens if token.isdigit()]
+            part_keys.add(f"{'-'.join(words)}|{'-'.join(numbers)}")
+        return " + ".join(sorted(part_keys))
+
+    swe_bench = load_swe_bench_verified(raw_data_dir)
+    agents = swe_bench.agents.copy()
+    solve_rate = swe_bench.runs.groupby("agent_id")["resolved"].mean()
+    agents["solve_rate"] = agents["agent_id"].map(solve_rate)
+    # note (Haoling Pu): pandas stores a missing model as NaN; each such submission is its own model.
+    agents["model_key"] = [
+        agent_id if pd.isna(model) else _model_key(model)
+        for agent_id, model in zip(agents["agent_id"], agents["model"])
+    ]
+    kept_agents = (
+        agents.sort_values(["solve_rate", "submit_date"], ascending=[False, True])
+        .drop_duplicates("model_key")
+        .sort_values("agent_id")
+        .drop(columns=["solve_rate", "model_key"])
+        .reset_index(drop=True)
+    )
+    logger.info(
+        f"swe_bench_verified_one_per_model: {len(kept_agents)} of {len(agents)} submissions, one per model"
+    )
+    return BenchmarkData(
+        name="swe_bench_verified_one_per_model",
+        agents=kept_agents,
+        tasks=swe_bench.tasks,
+        runs=swe_bench.runs[swe_bench.runs["agent_id"].isin(kept_agents["agent_id"])],
     )

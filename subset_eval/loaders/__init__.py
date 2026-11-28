@@ -7,6 +7,7 @@ from subset_eval.data import BenchmarkData
 from subset_eval.loaders.swe_bench_verified import (
     load_swe_bench_verified,
     load_swe_bench_verified_mini_swe_agent,
+    load_swe_bench_verified_one_per_model,
 )
 from subset_eval.loaders.terminal_bench import load_terminal_bench
 from subset_eval.loaders.terminal_bench_4_1 import load_terminal_bench_4_1
@@ -21,6 +22,7 @@ BenchmarkName = Literal[
     "terminal_bench_4_1_highest_effort",
     "swe_bench_verified",
     "swe_bench_verified_mini_swe_agent",
+    "swe_bench_verified_one_per_model",
 ]
 
 
@@ -48,5 +50,7 @@ def load_benchmark(
         return load_swe_bench_verified(raw_data_dir)
     elif benchmark_name == "swe_bench_verified_mini_swe_agent":
         return load_swe_bench_verified_mini_swe_agent(raw_data_dir)
+    elif benchmark_name == "swe_bench_verified_one_per_model":
+        return load_swe_bench_verified_one_per_model(raw_data_dir)
     else:
         raise ValueError(f"unknown benchmark {benchmark_name}")
