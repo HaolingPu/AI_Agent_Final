@@ -92,7 +92,7 @@ def load_terminal_bench_4_1(
         trials = trials.sort_values(["task_id", "Started", "ID"])
         trials["trial"] = trials.groupby("task_id").cumcount() + 1
         trials["agent_id"] = agent_id
-        # note (Haoling Pu): the linked trials' costs disagree with the leaderboard's total for about 20 rows (5 rows have none), and nothing downstream reads cost yet.
+        # note (Haoling Pu): the linked trials' costs disagree with the leaderboard's total for about 20 rows (5 rows have none); run_cost.py reads only each row's cost shares across tasks.
         trials["cost_usd"] = pd.to_numeric(
             trials["Cost"].replace("", None).str.removeprefix("$"), errors="raise"
         )
