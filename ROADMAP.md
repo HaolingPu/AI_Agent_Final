@@ -1,6 +1,6 @@
 # Roadmap
 
-11-768 final project. Deadline: 2026-12-03. New to the terms (IRT, Kendall tau, noise ceiling, ...)? Read [BACKGROUND.md](BACKGROUND.md) first.
+11-768 final project. Deadline: 2026-12-03. New to the terms (IRT, Kendall tau, noise ceiling, ...)? Read [BACKGROUND.md](BACKGROUND.md) first. Results so far: [FINDINGS.md](FINDINGS.md).
 
 ## 1. Question
 
@@ -25,7 +25,7 @@ Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how 
 
 | ID | Idea |
 |---|---|
-| X1 | **Frontier-aware selection** (our own method): keep tasks slightly harder than the current best agent. Does the subset last longer? |
+| X1 | **Frontier-aware selection** (our own method, `irt_frontier`): keep the k tasks with the most 2PL Fisher information averaged over abilities from the best selection agent up to one prior SD above it. Does the subset last longer? |
 | X2 | Task life cycle: when does each task go from "unsolved" to "separates agents" to "solved by everyone"? (mostly a by-product of C3) |
 | X3 | Model vs scaffold: redo C2 on mini-SWE-agent only (one scaffold, many models) |
 | X4 | Run-to-run noise: use Terminal-Bench's 5 trials per task; add to the noise ceiling |
@@ -47,6 +47,10 @@ Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how 
 - The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3 (as the unsaturated contrast), X4 and X5.
 - Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required) or by hand.
 - **Terminal-Bench 4.1** (`--benchmark terminal_bench_4_1`): the open Harbor Hub leaderboard, 67 rows x 66 tasks x 5 trials, dated by model release (2026-02 to 2026-11), top row 71 %. Download with `scripts/fetch_terminal_bench_4_1.py` (free Harbor Hub account). Several rows are one model at different reasoning efforts; C3 uses `--benchmark terminal_bench_4_1_highest_effort`, which keeps each (scaffold, model) at its highest effort only (54 rows), so near-duplicates do not fill the top 10. A trial whose regrade failed on the Hub (350 of 22,110, in 21 rows) counts as 0, as on the leaderboard; `--benchmark terminal_bench_4_1_graded_only` leaves those trials out and drops the 13 tasks some row then has no graded trial on (53 tasks left), as a robustness check.
+- **SWE-bench Lite** (`--benchmark swe_bench_lite`): the same repo's `evaluation/lite/`, 84 submissions x 300 tasks (2023-10 to 2025-09), one trial. Lite results files name only some tasks; an unnamed task counts as unresolved, as on the leaderboard.
+- **METR time horizon** (`--benchmark metr_1_0` / `metr_1_1`): METR's public `runs.jsonl` per report, dated by model release. A model is kept if it ran at least 95 % (1.0) / 98.5 % (1.1) of the tasks, then only tasks every kept model ran: 31 x 157 and 17 x 226, several runs per task, error runs kept with their binarized score as METR does.
+- **Multi-SWE-bench** (`--benchmark multi_swe_bench`): the paper's grid of 3 scaffolds x 12 models on the 1,632 non-Python issues (7 languages; Python is SWE-bench Verified), one run each, dated by model release (2024-09 to 2025-04). 68 % of issues are solved by no agent; the best agent solves 14 %.
+- **Not used.** tau2-bench: about 14 of 25 public banking_knowledge results files predate the v1.0.1 regrade, and the other domains have 8 submissions. HAL: traces are 113 GB of encrypted archives.
 - Raw data is not committed (`data/raw/` is in `.gitignore`).
 
 ### Unified format (both benchmarks)
@@ -72,7 +76,9 @@ A loader returns `BenchmarkData(name=..., agents=..., tasks=..., runs=...)` from
 
 **Reading the other experiments.** Weak-to-strong defines its groups by the very score being ranked, so its test group is compressed: read it only relative to random, and note that it cannot be done in practice. C2 compares a frozen subset with a refreshed one on the same agents, because raw tau per window mostly tracks which agents fall in that window. C3 reports a fixed 6-month pool next to the growing leaderboard, because the top 10 of a larger pool is packed tighter by itself.
 
-Subset sizes: SWE-bench 25 / 50 / 100 / 200; Terminal-Bench 10 / 20 / 40.
+Subset sizes: SWE-bench (Verified, Lite) and Multi-SWE-bench 25 / 50 / 100 / 200; Terminal-Bench and METR 10 / 20 / 40.
+
+**C1 is not staleness.** Plain random subsets never read the selection agents, so a lower tau on the date split means the newest agents are harder to rank (closer together), not that the subset aged. Staleness is C2's frozen-vs-refreshed gap.
 
 Date cutoffs (SWE-bench): 2024-12-31 main (12 months of follow-up); 2025-03-31, 2025-06-30 and 2025-09-30 as robustness checks.
 
@@ -91,6 +97,10 @@ Date cutoffs (SWE-bench): 2024-12-31 main (12 months of follow-up); 2025-03-31, 
 | `experiments/run_decay.py` | subsets frozen at a cutoff vs. refreshed before each later window, scored on the same window's agents; shelf life = first of two windows in a row where the whole 95 % band of the gap (over repeats) is below 0 -> `results/<benchmark>_decay.csv` (C2) |
 | `experiments/plot_decay_summary.py`, `experiments/plot_decay_by_age.py` | C2 figures from the per-cutoff decay CSVs: the gap per window for each cutoff; and the same test window scored by frozen subsets of different ages (test agents and refreshed subset fixed) -> `figures/c2/` |
 | `experiments/run_saturation.py` | per month, for all agents so far and for the last 6 months only: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/<benchmark>_saturation.csv` (C3) |
+| `experiments/summarize_core_loop.py` | core-loop CSVs of several benchmarks -> markdown tables for C1 (date vs random split, paired) and each method minus random, with bootstrap intervals over repeats |
+| `experiments/run_task_lifecycle.py` | subsets frozen at a cutoff (as in `run_decay.py`) -> per later window, the share of their tasks used up (solve rate >= 0.9) or out of reach (X2, C2 mechanism) |
+| `experiments/plot_saturation.py` | C3 figure from the saturation CSVs: separable top-10 pairs per month, growing pool vs last 6 months -> `figures/c3/` |
+| `experiments/run_cost.py`, `experiments/plot_cost.py` | share of a full evaluation's dollars vs tau for task subsets and for fewer trials per task (X4) -> `results/<benchmark>_cost.csv`, `figures/cost/` |
 | `experiments/reproduce_tiny_benchmarks.py` | tinyBenchmarks' own Open LLM Leaderboard MMLU matrix -> every method's estimation error and Spearman at 100 questions, next to the paper's numbers -> `results/tiny_benchmarks_reproduction.csv` (checks our implementation) |
 
 ## 7. Roles
