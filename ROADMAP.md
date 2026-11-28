@@ -37,12 +37,12 @@ Story: prior evaluations are too optimistic (C1) -> subsets expire, here is how 
 | | SWE-bench Verified | Terminal-Bench 2.0 |
 |---|---|---|
 | Source | [SWE-bench/experiments](https://github.com/SWE-bench/experiments) `evaluation/verified/<date>_<name>/` | [harborframework/terminal-bench-2-leaderboard](https://huggingface.co/datasets/harborframework/terminal-bench-2-leaderboard) `submissions/terminal-bench/2.0/<agent>__<model>/` |
-| Agents x tasks | 175 usable of 182 x 500 | 76 x ~89, 5 trials per task |
+| Agents x tasks | 173 usable of 182 x 500 | 76 x ~89, 5 trials per task |
 | Per-task 0/1 | `results/results.json` (135) or `per_instance_details.json` (40, also per-task cost); 7 have neither | `<job>/<trial>/result.json` -> `verifier_result.rewards.reward` |
 | Agent date | folder name (2023-10 to 2026-09, ~3 years) | job folder name, else `started_at` (2025-11 to 2026-05, ~6 months) |
 | Scaffold / model | `metadata.yaml`: `agent`, `model`, `model_org`, `os_model` | `metadata.yaml`: `agent_display_name`, `models[]` |
 | Model release date | only 48 of 182 (`model_release_date`); fill the rest | not given |
-| Cost / tokens | 40 mini-SWE-agent runs | every trial (`cost_usd`, tokens) |
+| Cost / tokens | 38 kept mini-SWE-agent runs (of 39 kept) | every trial (`cost_usd`, tokens) |
 
 - The long time axis (C2) uses **SWE-bench**; Terminal-Bench covers only ~6 months, so it serves C1, C3 (as the unsaturated contrast), X4 and X5.
 - Model release dates: fill from the Artificial Analysis free API (`release_date`; attribution required) or by hand.
@@ -122,5 +122,5 @@ Everyone owns data or framework **and** one core claim end to end (experiments, 
 
 - [x] Terminal-Bench: every agent is dated by the day its first trial started (no job folder names needed)
 - [x] Terminal-Bench: 89 tasks (`install-windows-3-11` is a misspelling of `install-windows-3.11`); 2.1 trials dropped (one submission); 74 of 75 kept; Crux keeps only its Opus 4.6 trials
-- [ ] SWE-bench: what to do with the 7 submissions without per-task results (drop)
+- [x] SWE-bench: dropped the 7 submissions without per-task results and 2 whose per-task results contradict their reported score (10.2 % vs 52.8 %, 0 % vs 69.6 %); 173 of 182 kept
 - [ ] What exactly is due on 12/03 (report, presentation, code)?
