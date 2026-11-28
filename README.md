@@ -36,6 +36,7 @@ uv run pytest -q
 uv run python experiments/run_core_loop.py    # core loop: every method on random / date / weak-to-strong splits (C1, X5)
 uv run python experiments/run_decay.py        # C2: frozen subsets scored on later windows, shelf life
 uv run python experiments/run_saturation.py   # C3: can the full benchmark still separate its top 10?
+uv run python experiments/reproduce_tiny_benchmarks.py   # sanity check: our methods on tinyBenchmarks' own MMLU data
 ```
 
 Each script takes `--benchmark` (default `toy`, synthetic data); a real benchmark becomes available once its loader is registered in `subset_eval/loaders/__init__.py`. Results go to `results/<benchmark>_<experiment>.csv`.

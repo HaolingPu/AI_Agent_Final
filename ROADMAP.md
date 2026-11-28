@@ -89,6 +89,7 @@ Date cutoffs (SWE-bench): 2025-06-30 main; also 2024-12, 2025-03, 2025-09.
 | `experiments/run_core_loop.py` | every method x split (random / date / weak-to-strong) x size -> `results/<benchmark>_core_loop.csv` (C1, X5) |
 | `experiments/run_decay.py` | subsets frozen at a cutoff vs. refreshed before each later window, scored on the same window's agents; shelf life = first of two windows in a row where frozen ranks worse -> `results/<benchmark>_decay.csv` (C2) |
 | `experiments/run_saturation.py` | per month, for all agents so far and for the last 6 months only: top-10 pairs the full benchmark separates beyond bootstrap noise, top-10 noise ceiling -> `results/<benchmark>_saturation.csv` (C3) |
+| `experiments/reproduce_tiny_benchmarks.py` | tinyBenchmarks' own Open LLM Leaderboard MMLU matrix -> every method's estimation error and Spearman at 100 questions, next to the paper's numbers -> `results/tiny_benchmarks_reproduction.csv` (checks our implementation) |
 
 ## 7. Roles
 
