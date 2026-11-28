@@ -8,6 +8,7 @@ import pandas as pd
 
 from subset_eval.irt import IrtParameters, fit_irt
 from subset_eval.select import (
+    select_irt_frontier,
     select_irt_max_information,
     select_pass_rate_band,
     select_random,
@@ -25,6 +26,7 @@ SelectionMethod = Literal[
     "stratified",
     "pass_rate_band",
     "irt_max_information",
+    "irt_frontier",
     "anchor_correctness",
     "anchor_irt",
 ]
@@ -33,6 +35,7 @@ SELECTION_METHODS: tuple[SelectionMethod, ...] = (
     "stratified",
     "pass_rate_band",
     "irt_max_information",
+    "irt_frontier",
     "anchor_correctness",
     "anchor_irt",
 )
@@ -105,6 +108,13 @@ def select_task_weights(
         task_weights = pd.Series(
             1.0 / subset_size,
             index=select_irt_max_information(
+                selection_group_fit.irt_parameters, subset_size=subset_size
+            ),
+        )
+    elif selection_method == "irt_frontier":
+        task_weights = pd.Series(
+            1.0 / subset_size,
+            index=select_irt_frontier(
                 selection_group_fit.irt_parameters, subset_size=subset_size
             ),
         )

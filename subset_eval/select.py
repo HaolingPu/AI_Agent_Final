@@ -3,10 +3,13 @@
 import numpy as np
 import pandas as pd
 
-from subset_eval.irt import IrtParameters
+from subset_eval.irt import ABILITY_PRIOR_SD, IrtParameters
 
 # note (Haoling Pu): Ndzomga (arXiv 2603.23749) keeps tasks that 30-70 % of past agents solved.
 PASS_RATE_BAND = (0.3, 0.7)
+# note (Haoling Pu): X1 aims the subset from the best selection agent to one ability prior SD beyond it, on an even grid.
+FRONTIER_HEADROOM = ABILITY_PRIOR_SD
+FRONTIER_GRID_POINTS = 21
 
 
 def select_random(
@@ -94,6 +97,30 @@ def select_irt_max_information(
     fisher_information = irt_parameters.fisher_information(
         irt_parameters.ability.to_numpy()
     )
+    if subset_size > len(fisher_information):
+        raise ValueError(
+            f"subset_size {subset_size} exceeds the {len(fisher_information)} tasks"
+        )
+    else:
+        pass
+    return fisher_information.nlargest(subset_size).index.tolist()
+
+
+def select_irt_frontier(
+    irt_parameters: IrtParameters, *, subset_size: int
+) -> list[str]:
+    """X1: keep the tasks with the highest Fisher information over abilities from the best selection agent to one prior SD beyond it.
+
+    Later agents are stronger, so the subset is aimed slightly above the current best rather than at the selection agents' average,
+    which is where select_irt_max_information aims and why it fails on stronger agents (X5).
+    Tasks no selection agent solves are not drawn in: their fitted discrimination stays low (LOG_DISCRIMINATION_PRIOR_SD), so they carry little information.
+    """
+    target_ability = np.linspace(
+        irt_parameters.ability.max(),
+        irt_parameters.ability.max() + FRONTIER_HEADROOM,
+        FRONTIER_GRID_POINTS,
+    )
+    fisher_information = irt_parameters.fisher_information(target_ability)
     if subset_size > len(fisher_information):
         raise ValueError(
             f"subset_size {subset_size} exceeds the {len(fisher_information)} tasks"

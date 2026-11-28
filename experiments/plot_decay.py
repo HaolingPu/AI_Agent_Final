@@ -19,6 +19,7 @@ METHOD_STYLES = {
     "irt_max_information": ("#eda100", "D"),
     "anchor_correctness": ("#e87ba4", "v"),
     "anchor_irt": ("#008300", "P"),
+    "irt_frontier": ("#8a5cd6", "X"),
 }
 CEILING_COLOR = "#d6d5d0"
 TEXT_COLOR = "#52514e"
@@ -33,7 +34,7 @@ def main() -> None:
     cli_arguments = parser.parse_args()
 
     results = pd.read_csv(cli_arguments.decay_csv)
-    # note (Wilson Zheng): the gp-IRT variants track their base method closely; the figure keeps the six selection methods.
+    # note (Wilson Zheng): the gp-IRT variants track their base method closely; the figure keeps the seven selection methods.
     results = results[results["method"].isin(SELECTION_METHODS)]
     mean_by_window = results.groupby(
         ["subset_size", "method", "window_start_month"], as_index=False
